@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>VideoMaker Timeline</title>
+  <title>VideoMaker Studio</title>
   <link rel="stylesheet" href="style.css" />
   <link rel="manifest" href="manifest.webmanifest" />
   <meta name="theme-color" content="#0b1020" />
@@ -12,8 +12,8 @@
   <header class="topbar">
     <div>
       <p class="eyebrow">WebApp GitHub Pages</p>
-      <h1>VideoMaker Timeline</h1>
-      <p class="subtitle">Monta foto, video, musica e testi con una timeline semplice, direttamente dal browser.</p>
+      <h1>VideoMaker Studio</h1>
+      <p class="subtitle">Timeline con corsie per foto/video, testi e audio. Trascina, taglia, ridimensiona e applica effetti.</p>
     </div>
     <div class="top-actions">
       <button id="installBtn" class="ghost hidden">Installa app</button>
@@ -26,7 +26,7 @@
       <div class="section-head">
         <div>
           <h2>1. Importa contenuti</h2>
-          <p>Carica foto, video e una traccia audio. I file restano sul tuo dispositivo.</p>
+          <p>Carica foto, video e audio. Tutto resta nel browser, nessun file viene caricato online.</p>
         </div>
       </div>
 
@@ -59,11 +59,11 @@
         </label>
         <label>
           Durata foto nuova
-          <input id="defaultDuration" type="number" min="1" max="60" step="0.5" value="4" />
+          <input id="defaultDuration" type="number" min="0.5" max="60" step="0.5" value="4" />
         </label>
         <label>
-          Dissolvenza scene
-          <input id="fadeDuration" type="number" min="0" max="3" step="0.1" value="0.5" />
+          Scala timeline
+          <input id="timelineScale" type="range" min="35" max="160" step="5" value="80" />
         </label>
         <label>
           FPS esportazione
@@ -74,26 +74,82 @@
         </label>
       </div>
 
-      <div class="audio-editor">
+      <div class="tool-box">
         <div class="section-head compact">
           <div>
-            <h2>2. Traccia audio</h2>
+            <h2>2. Strumenti montaggio</h2>
+            <p>Sincronizza le foto con la musica o aggiungi blocchi testo nella corsia dedicata.</p>
+          </div>
+        </div>
+        <div class="row gap wrap">
+          <button id="fitMediaToAudioBtn" class="secondary">Adatta foto/video all’audio</button>
+          <button id="compactMediaBtn" class="ghost">Allinea clip senza spazi</button>
+          <button id="addTextBtn" class="secondary">+ Aggiungi testo</button>
+        </div>
+      </div>
+
+      <div class="tool-box">
+        <div class="section-head compact">
+          <div>
+            <h2>3. Menu effetti</h2>
+            <p>Applica filtri, transizioni ed effetti alla clip selezionata o a tutto il montaggio.</p>
+          </div>
+        </div>
+        <div class="effects-grid">
+          <label>
+            Filtro
+            <select id="filterPreset">
+              <option value="none">Nessuno</option>
+              <option value="cinema">Cinema</option>
+              <option value="warm">Caldo</option>
+              <option value="cold">Freddo</option>
+              <option value="bw">Bianco e nero</option>
+              <option value="vintage">Vintage</option>
+              <option value="dramatic">Drammatico</option>
+              <option value="softBlur">Sfocato soft</option>
+            </select>
+          </label>
+          <label>
+            Transizione
+            <select id="transitionPreset">
+              <option value="none">Nessuna</option>
+              <option value="fade">Dissolvenza</option>
+              <option value="slide">Scorrimento</option>
+              <option value="zoom">Zoom</option>
+              <option value="wipe">Tendina</option>
+            </select>
+          </label>
+          <label>
+            Effetto movimento
+            <select id="motionPreset">
+              <option value="none">Nessuno</option>
+              <option value="zoomIn">Zoom lento avanti</option>
+              <option value="zoomOut">Zoom lento indietro</option>
+              <option value="panLeft">Panoramica sinistra</option>
+              <option value="panRight">Panoramica destra</option>
+              <option value="shake">Vibrazione</option>
+            </select>
+          </label>
+          <label>
+            Durata transizione
+            <input id="transitionDuration" type="number" min="0" max="3" step="0.1" value="0.6" />
+          </label>
+        </div>
+        <div class="row gap wrap">
+          <button id="applyFxSelectedBtn" class="secondary">Applica alla clip selezionata</button>
+          <button id="applyFxAllBtn" class="ghost">Applica a tutte le clip</button>
+        </div>
+      </div>
+
+      <div class="tool-box">
+        <div class="section-head compact">
+          <div>
+            <h2>4. Audio</h2>
             <p id="audioInfo">Nessun audio caricato.</p>
           </div>
-          <button id="fitPhotosBtn" class="secondary">Adatta foto all’audio</button>
         </div>
-
         <canvas id="waveform" width="900" height="120"></canvas>
-
         <div class="settings-grid audio-grid">
-          <label>
-            Inizio audio
-            <input id="audioStart" type="number" min="0" step="0.1" value="0" />
-          </label>
-          <label>
-            Fine audio
-            <input id="audioEnd" type="number" min="0" step="0.1" value="0" />
-          </label>
           <label>
             Volume musica
             <input id="audioVolume" type="range" min="0" max="1" step="0.05" value="0.85" />
@@ -108,25 +164,9 @@
             </select>
           </label>
         </div>
-
         <div class="row gap wrap">
           <button id="previewAudioBtn" class="ghost">▶ Prova audio</button>
           <button id="stopAudioBtn" class="ghost">■ Stop audio</button>
-          <label class="check"><input id="videoAudioCheck" type="checkbox" checked /> Mantieni audio dei video</label>
-        </div>
-      </div>
-
-      <div class="text-tools">
-        <div class="section-head compact">
-          <div>
-            <h2>3. Testo rapido</h2>
-            <p>Applica lo stesso testo a tutte le scene, oppure modifica la scena selezionata.</p>
-          </div>
-        </div>
-        <textarea id="bulkText" placeholder="Scrivi un testo da applicare a tutte le scene..."></textarea>
-        <div class="row gap wrap">
-          <button id="applyTextBtn" class="secondary">Applica a tutte le scene</button>
-          <label class="check"><input id="watermarkCheck" type="checkbox" /> Firma VideoMaker</label>
         </div>
       </div>
     </section>
@@ -160,43 +200,48 @@
 
       <div id="downloadBox" class="download-box hidden">
         <h3>Video pronto ✅</h3>
-        <p>Scarica il file WEBM. Per avere MP4 puoi convertirlo con CapCut, Canva, VLC o un convertitore online.</p>
-        <a id="downloadLink" download="videomaker-export.webm">Scarica video</a>
+        <p>Scarica il file WEBM. Per ottenere MP4 puoi convertirlo con CapCut, Canva, VLC o un convertitore online.</p>
+        <a id="downloadLink" download="videomaker-studio-export.webm">Scarica video</a>
       </div>
     </section>
 
     <section class="panel timeline-panel">
       <div class="timeline-head">
         <div>
-          <h2>4. Timeline di montaggio</h2>
-          <p>Clicca una foto o un video per modificarlo. Puoi cambiare durata, ordine, testo e taglio video.</p>
+          <h2>5. Timeline a corsie</h2>
+          <p>Trascina i blocchi per spostarli. Usa le maniglie ai lati per accorciare o allungare testo, audio e clip.</p>
         </div>
         <div class="badges">
           <span id="durationBadge">Video 0s</span>
           <span id="audioDurationBadge">Audio 0s</span>
         </div>
       </div>
-
+      <div class="timeline-help">
+        <span>🟦 Foto/Video</span>
+        <span>🟪 Testi</span>
+        <span>🟩 Audio</span>
+        <span>↔ trascina bordi</span>
+      </div>
       <div id="timelineEditor" class="timeline-editor empty">
-        <p>Aggiungi foto o video per iniziare il montaggio.</p>
+        <p>Aggiungi foto, video o audio per iniziare il montaggio.</p>
       </div>
     </section>
 
     <section class="panel inspector-panel">
       <div class="section-head compact">
         <div>
-          <h2>5. Modifica elemento</h2>
-          <p id="selectedInfo">Nessuna scena selezionata.</p>
+          <h2>6. Pannello modifica</h2>
+          <p id="selectedInfo">Nessun elemento selezionato.</p>
         </div>
       </div>
       <div id="inspector" class="inspector-empty">
-        <p>Seleziona una scena nella timeline per modificarla.</p>
+        <p>Seleziona un blocco nella timeline per modificare durata, posizione, testo, filtri o audio.</p>
       </div>
     </section>
   </main>
 
   <footer>
-    <p>WebApp statica pronta per GitHub Pages. Esportazione locale: nessun file viene caricato online.</p>
+    <p>WebApp statica pronta per GitHub Pages. Esportazione locale in WEBM tramite browser.</p>
   </footer>
 
   <script src="script.js"></script>

@@ -1,10 +1,11 @@
 {
-  "name": "VideoMaker Timeline",
+  "name": "VideoMaker Studio",
   "short_name": "VideoMaker",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#0b1020",
   "theme_color": "#0b1020",
+  "description": "WebApp per montare video da foto, video, audio e testi con timeline a corsie.",
   "icons": [
     {
       "src": "icon.svg",
