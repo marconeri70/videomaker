@@ -1,1418 +1,1168 @@
-const $ = (id) => document.getElementById(id);
+/* VideoMaker Studio AI - static GitHub Pages editor */
+(() => {
+  'use strict';
 
-const stage = $('stage');
-const ctx = stage.getContext('2d');
-const waveform = $('waveform');
-const waveCtx = waveform.getContext('2d');
+  const $ = (sel, root = document) => root.querySelector(sel);
+  const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
+  const clamp = (v, min, max) => Math.max(min, Math.min(max, Number.isFinite(v) ? v : min));
+  const uid = (prefix = 'id') => `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+  const fmtTime = (sec = 0) => {
+    sec = Math.max(0, sec);
+    const m = Math.floor(sec / 60);
+    const s = Math.floor(sec % 60).toString().padStart(2, '0');
+    const d = Math.floor((sec % 1) * 10);
+    return `${m}:${s}.${d}`;
+  };
+  const readFileText = file => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsText(file);
+  });
 
-const refs = {
-  imageInput: $('imageInput'),
-  videoInput: $('videoInput'),
-  audioInput: $('audioInput'),
-  formatSelect: $('formatSelect'),
-  defaultDuration: $('defaultDuration'),
-  timelineScale: $('timelineScale'),
-  fpsSelect: $('fpsSelect'),
-  fitMediaToAudioBtn: $('fitMediaToAudioBtn'),
-  compactMediaBtn: $('compactMediaBtn'),
-  addTextBtn: $('addTextBtn'),
-  filterPreset: $('filterPreset'),
-  transitionPreset: $('transitionPreset'),
-  motionPreset: $('motionPreset'),
-  transitionDuration: $('transitionDuration'),
-  applyFxSelectedBtn: $('applyFxSelectedBtn'),
-  applyFxAllBtn: $('applyFxAllBtn'),
-  audioInfo: $('audioInfo'),
-  audioVolume: $('audioVolume'),
-  musicFadeSelect: $('musicFadeSelect'),
-  previewAudioBtn: $('previewAudioBtn'),
-  stopAudioBtn: $('stopAudioBtn'),
-  statusText: $('statusText'),
-  previewBtn: $('previewBtn'),
-  stopPreviewBtn: $('stopPreviewBtn'),
-  exportBtn: $('exportBtn'),
-  exportMp4Btn: $('exportMp4Btn'),
-  resetBtn: $('resetBtn'),
-  installBtn: $('installBtn'),
-  scrubRange: $('scrubRange'),
-  currentTimeLabel: $('currentTimeLabel'),
-  totalTimeLabel: $('totalTimeLabel'),
-  progressBar: $('progressBar'),
-  downloadBox: $('downloadBox'),
-  downloadTitle: $('downloadTitle'),
-  downloadMessage: $('downloadMessage'),
-  downloadLink: $('downloadLink'),
-  timelineEditor: $('timelineEditor'),
-  durationBadge: $('durationBadge'),
-  audioDurationBadge: $('audioDurationBadge'),
-  inspector: $('inspector'),
-  selectedInfo: $('selectedInfo'),
-};
+  const dom = {
+    canvas: $('#previewCanvas'),
+    safeArea: $('#safeArea'),
+    loadingOverlay: $('#loadingOverlay'),
+    loadingTitle: $('#loadingTitle'),
+    loadingText: $('#loadingText'),
+    mediaInput: $('#mediaInput'),
+    dropZone: $('#dropZone'),
+    assetLibrary: $('#assetLibrary'),
+    formatSelect: $('#formatSelect'),
+    fpsSelect: $('#fpsSelect'),
+    playBtn: $('#playBtn'),
+    timeSlider: $('#timeSlider'),
+    timeReadout: $('#timeReadout'),
+    timelineInfo: $('#timelineInfo'),
+    timelineScroll: $('#timelineScroll'),
+    ruler: $('#ruler'),
+    mediaTrack: $('#mediaTrack'),
+    textTrack: $('#textTrack'),
+    subtitlesTrack: $('#subtitlesTrack'),
+    audioTrack: $('#audioTrack'),
+    playhead: $('#playhead'),
+    zoomSlider: $('#zoomSlider'),
+    snapBtn: $('#snapBtn'),
+    inspector: $('#inspector'),
+    selectedLabel: $('#selectedLabel'),
+    effectGrid: $('#effectGrid'),
+    motionGrid: $('#motionGrid'),
+    transitionGrid: $('#transitionGrid'),
+    apiKeyInput: $('#apiKeyInput'),
+    proxyUrlInput: $('#proxyUrlInput'),
+    transcribeModel: $('#transcribeModel'),
+    saveKeyCheck: $('#saveKeyCheck'),
+    subtitleDraftText: $('#subtitleDraftText'),
+    srtInput: $('#srtInput'),
+  };
+  const ctx = dom.canvas.getContext('2d', { alpha: false });
 
-const state = {
-  media: [],
-  texts: [],
-  selected: null,
-  currentTime: 0,
-  isPlaying: false,
-  rafId: null,
-  previewStartPerf: 0,
-  previewStartTime: 0,
-  deferredInstallPrompt: null,
-  previewAudio: null,
-  audio: {
-    url: null,
-    file: null,
-    fileName: '',
+  const EFFECTS = [
+    { id:'none', name:'Pulito', desc:'Nessun filtro', filter:'none', glow:'rgba(255,255,255,.18)' },
+    { id:'cinematic', name:'Cinematic', desc:'Contrasto + vignetta', filter:'contrast(1.18) saturate(1.12) brightness(.96)', overlay:'vignette', glow:'rgba(124,92,255,.3)' },
+    { id:'warm', name:'Caldo', desc:'Look emozionale', filter:'sepia(.18) saturate(1.22) brightness(1.04)', glow:'rgba(255,160,88,.32)' },
+    { id:'cold', name:'Freddo', desc:'Tono blu moderno', filter:'saturate(.95) hue-rotate(180deg) contrast(1.06)', glow:'rgba(0,224,255,.28)' },
+    { id:'bw', name:'Bianco/Nero', desc:'Editoriale', filter:'grayscale(1) contrast(1.2)', glow:'rgba(255,255,255,.25)' },
+    { id:'vintage', name:'Vintage', desc:'Sepia + grana', filter:'sepia(.55) contrast(1.08) brightness(.98)', overlay:'grain', glow:'rgba(255,209,102,.26)' },
+    { id:'dream', name:'Dream Glow', desc:'Morbido luminoso', filter:'brightness(1.08) saturate(1.26) blur(.15px)', overlay:'glow', glow:'rgba(255,63,143,.24)' },
+    { id:'neon', name:'Neon', desc:'Cyber color', filter:'contrast(1.24) saturate(1.7) brightness(.96)', overlay:'neon', glow:'rgba(255,63,143,.3)' },
+    { id:'dramatic', name:'Drammatico', desc:'Ombre profonde', filter:'contrast(1.36) saturate(.9) brightness(.85)', overlay:'vignette', glow:'rgba(255,77,109,.24)' },
+    { id:'soft', name:'Soft Portrait', desc:'Pelle morbida', filter:'brightness(1.06) contrast(.96) saturate(1.05)', glow:'rgba(255,180,200,.25)' },
+    { id:'punchy', name:'Social Pop', desc:'Colori forti', filter:'contrast(1.15) saturate(1.45)', glow:'rgba(0,224,255,.28)' },
+    { id:'noir', name:'Noir', desc:'Scuro elegante', filter:'grayscale(.92) contrast(1.34) brightness(.78)', overlay:'vignette', glow:'rgba(120,130,160,.25)' },
+    { id:'vhs', name:'VHS', desc:'Vecchia videocamera', filter:'contrast(1.12) saturate(.8) brightness(.94)', overlay:'scanlines', glow:'rgba(53,229,140,.2)' },
+    { id:'glitch', name:'Glitch', desc:'Distorsione digitale', filter:'contrast(1.18) saturate(1.25)', overlay:'glitch', glow:'rgba(255,63,143,.33)' },
+    { id:'blur-bg', name:'Blur Mood', desc:'Fondo sfumato', filter:'saturate(1.12)', overlay:'blurFrame', glow:'rgba(124,92,255,.3)' },
+    { id:'news', name:'Breaking News', desc:'Look informativo', filter:'contrast(1.08) saturate(1.15)', overlay:'newsFrame', glow:'rgba(255,77,109,.3)' },
+  ];
+  const MOTIONS = [
+    { id:'none', name:'Fermo', desc:'Nessun movimento' },
+    { id:'kenburns-in', name:'Zoom In', desc:'Ingrandimento lento' },
+    { id:'kenburns-out', name:'Zoom Out', desc:'Allontanamento lento' },
+    { id:'pan-left', name:'Pan Sinistra', desc:'Scorrimento laterale' },
+    { id:'pan-right', name:'Pan Destra', desc:'Scorrimento laterale' },
+    { id:'pan-up', name:'Pan Alto', desc:'Movimento verticale' },
+    { id:'pan-down', name:'Pan Basso', desc:'Movimento verticale' },
+    { id:'rotate-slow', name:'Rotazione lenta', desc:'Effetto elegante' },
+    { id:'pulse', name:'Pulse Beat', desc:'Spinta social' },
+    { id:'float', name:'Float', desc:'Movimento morbido' },
+  ];
+  const TRANSITIONS = [
+    { id:'none', name:'Taglio netto', desc:'Cambio immediato' },
+    { id:'fade', name:'Fade', desc:'Dissolvenza' },
+    { id:'crossfade', name:'Crossfade', desc:'Doppia dissolvenza' },
+    { id:'slide-left', name:'Slide Left', desc:'Scorrimento a sinistra' },
+    { id:'slide-right', name:'Slide Right', desc:'Scorrimento a destra' },
+    { id:'slide-up', name:'Slide Up', desc:'Scorrimento in alto' },
+    { id:'slide-down', name:'Slide Down', desc:'Scorrimento in basso' },
+    { id:'zoom', name:'Zoom Blur', desc:'Zoom dinamico' },
+    { id:'wipe', name:'Wipe', desc:'Tendina laterale' },
+    { id:'circle', name:'Circle Reveal', desc:'Apertura circolare' },
+    { id:'spin', name:'Spin', desc:'Rotazione veloce' },
+    { id:'flash', name:'Flash', desc:'Lampo bianco' },
+    { id:'black', name:'Fade Black', desc:'Nero cinematografico' },
+    { id:'pixel', name:'Pixel Pop', desc:'Effetto digitale' },
+    { id:'split', name:'Split', desc:'Divisione centrale' },
+    { id:'swirl', name:'Swirl', desc:'Rotazione morbida' },
+  ];
+
+  const state = {
+    projectName: 'Nuovo progetto',
+    assets: [],
+    clips: { media: [], text: [], subtitles: [], audio: [] },
+    selected: null,
+    currentTime: 0,
     duration: 0,
-    trimStart: 0,
-    trimEnd: 0,
-    timelineStart: 0,
-    buffer: null,
-    element: null,
-  },
-  ffmpeg: {
-    instance: null,
-    fetchFile: null,
-    toBlobURL: null,
-    loaded: false,
-    loadingPromise: null,
-  },
-};
-
-function uid(prefix) {
-  return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-}
-
-function clamp(value, min, max) {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return min;
-  return Math.min(max, Math.max(min, n));
-}
-
-function escapeHtml(value) {
-  return String(value ?? '')
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#039;');
-}
-
-function formatSeconds(seconds) {
-  if (!Number.isFinite(seconds) || seconds <= 0) return '0:00';
-  const min = Math.floor(seconds / 60);
-  const sec = Math.floor(seconds % 60).toString().padStart(2, '0');
-  return `${min}:${sec}`;
-}
-
-function formatLong(seconds) {
-  if (!Number.isFinite(seconds) || seconds <= 0) return '0s';
-  const min = Math.floor(seconds / 60);
-  const sec = Math.round(seconds % 60);
-  return min > 0 ? `${min}m ${sec}s` : `${sec}s`;
-}
-
-function setStatus(message) {
-  refs.statusText.textContent = message;
-}
-
-function pxPerSecond() {
-  return Number(refs.timelineScale.value || 80);
-}
-
-function audioDuration() {
-  if (!state.audio.url) return 0;
-  return Math.max(0, Number(state.audio.trimEnd || 0) - Number(state.audio.trimStart || 0));
-}
-
-function projectDuration() {
-  const mediaEnd = state.media.reduce((max, item) => Math.max(max, item.start + item.duration), 0);
-  const textEnd = state.texts.reduce((max, item) => Math.max(max, item.start + item.duration), 0);
-  const audioEnd = state.audio.url ? state.audio.timelineStart + audioDuration() : 0;
-  return Math.max(mediaEnd, textEnd, audioEnd, 0);
-}
-
-function updateCanvasSize() {
-  const [w, h] = refs.formatSelect.value.split('x').map(Number);
-  stage.width = w;
-  stage.height = h;
-  drawFrame(state.currentTime);
-}
-
-function roundRect(context, x, y, width, height, radius) {
-  const r = Math.min(radius, width / 2, height / 2);
-  context.beginPath();
-  context.moveTo(x + r, y);
-  context.arcTo(x + width, y, x + width, y + height, r);
-  context.arcTo(x + width, y + height, x, y + height, r);
-  context.arcTo(x, y + height, x, y, r);
-  context.arcTo(x, y, x + width, y, r);
-  context.closePath();
-}
-
-function objectFitCoverDimensions(mediaWidth, mediaHeight, boxWidth, boxHeight, zoom = 1, panX = 0, panY = 0) {
-  const safeW = Math.max(1, mediaWidth || boxWidth);
-  const safeH = Math.max(1, mediaHeight || boxHeight);
-  const scale = Math.max(boxWidth / safeW, boxHeight / safeH) * zoom;
-  const width = safeW * scale;
-  const height = safeH * scale;
-  return {
-    x: (boxWidth - width) / 2 + panX,
-    y: (boxHeight - height) / 2 + panY,
-    width,
-    height,
-  };
-}
-
-function drawEmpty() {
-  const w = stage.width;
-  const h = stage.height;
-  const gradient = ctx.createLinearGradient(0, 0, w, h);
-  gradient.addColorStop(0, '#0f172a');
-  gradient.addColorStop(1, '#111827');
-  ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, w, h);
-  ctx.fillStyle = 'rgba(255,255,255,0.92)';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.font = `900 ${Math.round(w * 0.055)}px system-ui, sans-serif`;
-  ctx.fillText('VideoMaker Studio', w / 2, h / 2 - 44);
-  ctx.fillStyle = 'rgba(255,255,255,0.62)';
-  ctx.font = `500 ${Math.round(w * 0.026)}px system-ui, sans-serif`;
-  ctx.fillText('Aggiungi foto, video, audio e testi', w / 2, h / 2 + 34);
-}
-
-function filterToCanvas(filter) {
-  switch (filter) {
-    case 'cinema': return 'contrast(1.15) saturate(1.15) brightness(0.92)';
-    case 'warm': return 'sepia(0.18) saturate(1.22) brightness(1.04)';
-    case 'cold': return 'saturate(0.9) hue-rotate(185deg) brightness(1.02)';
-    case 'bw': return 'grayscale(1) contrast(1.12)';
-    case 'vintage': return 'sepia(0.42) contrast(1.08) saturate(0.84)';
-    case 'dramatic': return 'contrast(1.32) saturate(1.05) brightness(0.86)';
-    case 'softBlur': return 'blur(2px) brightness(1.04)';
-    default: return 'none';
-  }
-}
-
-function mediaAt(time) {
-  return state.media
-    .filter((item) => time >= item.start && time < item.start + item.duration)
-    .sort((a, b) => a.start - b.start || state.media.indexOf(a) - state.media.indexOf(b))
-    .at(-1) || null;
-}
-
-function activeTextsAt(time) {
-  return state.texts.filter((item) => time >= item.start && time < item.start + item.duration);
-}
-
-function getMotion(scene, progress) {
-  const w = stage.width;
-  switch (scene.motion) {
-    case 'zoomIn': return { zoom: 1 + progress * 0.12, panX: 0, panY: 0 };
-    case 'zoomOut': return { zoom: 1.12 - progress * 0.12, panX: 0, panY: 0 };
-    case 'panLeft': return { zoom: 1.12, panX: (0.5 - progress) * w * 0.08, panY: 0 };
-    case 'panRight': return { zoom: 1.12, panX: (progress - 0.5) * w * 0.08, panY: 0 };
-    case 'shake': return { zoom: 1.04, panX: Math.sin(progress * Math.PI * 28) * w * 0.01, panY: Math.cos(progress * Math.PI * 31) * w * 0.006 };
-    default: return { zoom: 1, panX: 0, panY: 0 };
-  }
-}
-
-function prepareVideoFrame(scene, localTime) {
-  if (scene.type !== 'video' || !scene.element) return;
-  const video = scene.element;
-  const target = clamp((scene.trimStart || 0) + localTime, scene.trimStart || 0, scene.trimEnd || video.duration || localTime);
-  if (!Number.isFinite(target)) return;
-  if (Math.abs(video.currentTime - target) > 0.12) {
-    try { video.currentTime = target; } catch (_) { /* ignore browser seek errors */ }
-  }
-  if (state.isPlaying && video.paused) {
-    video.muted = true;
-    video.play().catch(() => {});
-  }
-}
-
-function pauseInactiveVideos(activeId) {
-  state.media.forEach((item) => {
-    if (item.type === 'video' && item.element && item.id !== activeId && !item.element.paused) {
-      item.element.pause();
-    }
-  });
-}
-
-function drawMedia(scene, time) {
-  if (!scene) {
-    pauseInactiveVideos(null);
-    drawEmpty();
-    return;
-  }
-
-  const w = stage.width;
-  const h = stage.height;
-  const local = clamp(time - scene.start, 0, scene.duration);
-  const progress = scene.duration > 0 ? clamp(local / scene.duration, 0, 1) : 0;
-  const transitionDuration = clamp(scene.transitionDuration || 0, 0, Math.min(3, scene.duration / 2));
-  const transitionProgress = transitionDuration > 0 ? clamp(local / transitionDuration, 0, 1) : 1;
-  const mediaEl = scene.element;
-
-  prepareVideoFrame(scene, local);
-  pauseInactiveVideos(scene.id);
-
-  ctx.save();
-  ctx.fillStyle = '#000';
-  ctx.fillRect(0, 0, w, h);
-
-  let alpha = 1;
-  let clipW = w;
-  let offsetX = 0;
-  let transitionZoom = 1;
-  if (transitionProgress < 1) {
-    if (scene.transition === 'fade') alpha = transitionProgress;
-    if (scene.transition === 'slide') offsetX = (1 - transitionProgress) * w;
-    if (scene.transition === 'zoom') transitionZoom = 1.22 - transitionProgress * 0.22;
-    if (scene.transition === 'wipe') clipW = Math.max(1, w * transitionProgress);
-  }
-
-  const motion = getMotion(scene, progress);
-  const zoom = (scene.zoom || 1) * motion.zoom * transitionZoom;
-  const mediaW = scene.type === 'image' ? mediaEl.naturalWidth : mediaEl.videoWidth;
-  const mediaH = scene.type === 'image' ? mediaEl.naturalHeight : mediaEl.videoHeight;
-  const box = objectFitCoverDimensions(mediaW, mediaH, w, h, zoom, motion.panX + offsetX, motion.panY);
-
-  ctx.globalAlpha = alpha;
-  ctx.filter = filterToCanvas(scene.filter);
-  if (scene.transition === 'wipe' && transitionProgress < 1) {
-    ctx.beginPath();
-    ctx.rect(0, 0, clipW, h);
-    ctx.clip();
-  }
-  try {
-    ctx.drawImage(mediaEl, box.x, box.y, box.width, box.height);
-  } catch (_) {
-    drawEmpty();
-  }
-  ctx.restore();
-}
-
-function wrapText(text, maxWidth) {
-  const words = String(text || '').split(/\s+/).filter(Boolean);
-  const lines = [];
-  let current = '';
-  for (const word of words) {
-    const test = current ? `${current} ${word}` : word;
-    if (ctx.measureText(test).width > maxWidth && current) {
-      lines.push(current);
-      current = word;
-    } else {
-      current = test;
-    }
-  }
-  if (current) lines.push(current);
-  return lines.slice(0, 8);
-}
-
-function drawTextItem(item, time) {
-  const text = item.text?.trim();
-  if (!text) return;
-  const w = stage.width;
-  const h = stage.height;
-  const local = clamp(time - item.start, 0, item.duration);
-  const progress = item.duration > 0 ? clamp(local / item.duration, 0, 1) : 1;
-  const inOut = Math.min(1, progress * 5, (1 - progress) * 5);
-  const fontSize = Math.max(18, Math.round((Number(item.fontSize) || 64) * (w / 1080)));
-  const lineHeight = fontSize * 1.18;
-  const maxWidth = w * clamp(item.maxWidth || 82, 25, 95) / 100;
-  const x = w * clamp(item.x ?? 50, 0, 100) / 100;
-  const y = h * clamp(item.y ?? 78, 0, 100) / 100;
-  let scale = 1;
-  let dx = 0;
-  let alpha = 1;
-
-  if (item.animation === 'fade') alpha = inOut;
-  if (item.animation === 'pop') scale = 0.86 + inOut * 0.14;
-  if (item.animation === 'slideUp') dx = 0;
-
-  ctx.save();
-  ctx.globalAlpha = alpha;
-  ctx.translate(x, y + (item.animation === 'slideUp' ? (1 - inOut) * fontSize * 1.2 : 0));
-  ctx.scale(scale, scale);
-  ctx.font = `900 ${fontSize}px system-ui, -apple-system, BlinkMacSystemFont, sans-serif`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  const lines = wrapText(text, maxWidth);
-  const blockHeight = lines.length * lineHeight;
-  const padX = Math.round(w * 0.03);
-  const padY = Math.round(fontSize * 0.58);
-
-  if ((item.bgOpacity || 0) > 0) {
-    ctx.fillStyle = `rgba(0,0,0,${clamp(item.bgOpacity, 0, 0.9)})`;
-    roundRect(ctx, -maxWidth / 2 - padX, -blockHeight / 2 - padY, maxWidth + padX * 2, blockHeight + padY * 2, 30);
-    ctx.fill();
-  }
-
-  lines.forEach((line, index) => {
-    const yy = -blockHeight / 2 + index * lineHeight + lineHeight / 2;
-    ctx.lineWidth = Math.max(5, fontSize * 0.09);
-    ctx.strokeStyle = item.strokeColor || 'rgba(0,0,0,0.82)';
-    ctx.strokeText(line, dx, yy);
-    ctx.fillStyle = item.color || '#ffffff';
-    ctx.fillText(line, dx, yy);
-  });
-  ctx.restore();
-}
-
-function drawFrame(time) {
-  const scene = mediaAt(time);
-  drawMedia(scene, time);
-  activeTextsAt(time).forEach((item) => drawTextItem(item, time));
-}
-
-function updateDurationUi() {
-  const total = projectDuration();
-  state.currentTime = clamp(state.currentTime, 0, Math.max(0, total));
-  refs.durationBadge.textContent = `Progetto ${formatLong(total)}`;
-  refs.audioDurationBadge.textContent = `Audio ${formatLong(audioDuration())}`;
-  refs.scrubRange.max = total.toFixed(2);
-  refs.scrubRange.value = state.currentTime.toFixed(2);
-  refs.currentTimeLabel.textContent = formatSeconds(state.currentTime);
-  refs.totalTimeLabel.textContent = formatSeconds(total);
-  refs.progressBar.style.width = total ? `${Math.min(100, (state.currentTime / total) * 100)}%` : '0%';
-}
-
-
-function createThumbFromElement(element, width = 176, height = 99) {
-  const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
-  const c = canvas.getContext('2d');
-  c.fillStyle = '#020617';
-  c.fillRect(0, 0, width, height);
-  const mediaW = element.naturalWidth || element.videoWidth || width;
-  const mediaH = element.naturalHeight || element.videoHeight || height;
-  const box = objectFitCoverDimensions(mediaW, mediaH, width, height, 1, 0, 0);
-  try { c.drawImage(element, box.x, box.y, box.width, box.height); } catch (_) {}
-  return canvas.toDataURL('image/jpeg', 0.72);
-}
-
-function repeatedImageThumbs(img, count = 5) {
-  const thumb = createThumbFromElement(img);
-  return Array.from({ length: count }, () => thumb);
-}
-
-function waitForVideoSeek(video, time) {
-  return new Promise((resolve) => {
-    const done = () => {
-      video.removeEventListener('seeked', done);
-      resolve();
-    };
-    video.addEventListener('seeked', done, { once: true });
-    try { video.currentTime = time; } catch (_) { resolve(); }
-    setTimeout(resolve, 900);
-  });
-}
-
-async function buildVideoThumbs(url, duration, count = 6) {
-  const video = document.createElement('video');
-  video.src = url;
-  video.muted = true;
-  video.playsInline = true;
-  video.preload = 'auto';
-  await new Promise((resolve) => {
-    video.onloadedmetadata = resolve;
-    video.onerror = resolve;
-  });
-  const safeDuration = Number.isFinite(duration) && duration > 0 ? duration : video.duration || 1;
-  const thumbs = [];
-  for (let i = 0; i < count; i += 1) {
-    const t = Math.min(Math.max(0.05, (safeDuration * (i + 0.5)) / count), Math.max(0.05, safeDuration - 0.05));
-    await waitForVideoSeek(video, t);
-    thumbs.push(createThumbFromElement(video));
-  }
-  return thumbs;
-}
-
-function renderClipThumbs(item) {
-  const thumbs = item.thumbnails?.length ? item.thumbnails : [];
-  if (!thumbs.length) {
-    return `<div class="clip-thumb-placeholder">${item.type === 'image' ? '📷' : '🎬'}</div>`;
-  }
-  return `<div class="clip-thumbs">${thumbs.slice(0, 7).map((src) => `<span class="clip-thumb" style="background-image:url('${src}')"></span>`).join('')}</div>`;
-}
-
-function createMediaClip(file, type) {
-  const url = URL.createObjectURL(file);
-  const start = nextMediaStart();
-  const base = {
-    id: uid(type),
-    type,
-    fileName: file.name,
-    url,
-    start,
-    duration: Number(refs.defaultDuration.value || 4),
-    filter: 'none',
-    transition: 'fade',
-    transitionDuration: 0.6,
-    motion: 'zoomIn',
-    zoom: 1,
-    trimStart: 0,
-    trimEnd: 0,
-    thumbnails: [],
-    element: null,
+    pps: 95,
+    fps: 30,
+    format: 'vertical',
+    snap: true,
+    playing: false,
+    playStartClock: 0,
+    playStartTime: 0,
+    history: [],
+    future: [],
   };
 
-  if (type === 'image') {
-    const img = new Image();
-    img.onload = () => {
-      base.width = img.naturalWidth;
-      base.height = img.naturalHeight;
-      base.thumbnails = repeatedImageThumbs(img);
-      renderAll();
+  const mediaCache = new Map();
+  const audioPlayback = new Map();
+  let animationId = null;
+
+  function pushHistory() {
+    const snap = JSON.stringify(serializeProject());
+    if (state.history[state.history.length - 1] !== snap) {
+      state.history.push(snap);
+      if (state.history.length > 70) state.history.shift();
+      state.future.length = 0;
+    }
+  }
+
+  function serializeProject() {
+    return {
+      version: 5,
+      projectName: state.projectName,
+      format: state.format,
+      fps: state.fps,
+      pps: state.pps,
+      assets: state.assets.map(a => ({ id:a.id, name:a.name, type:a.type, duration:a.duration, url:a.url, thumb:a.thumb, waveform:a.waveform, note:'I file locali vengono riaperti solo nella sessione corrente.' })),
+      clips: state.clips,
     };
-    img.src = url;
-    base.element = img;
-    state.media.push(base);
-    selectItem('media', base.id);
+  }
+
+  function restoreProject(data) {
+    state.projectName = data.projectName || 'Progetto caricato';
+    state.format = data.format || 'vertical';
+    state.fps = Number(data.fps || 30);
+    state.pps = Number(data.pps || 95);
+    state.assets = (data.assets || []).map(a => ({ ...a, file:null }));
+    state.clips = data.clips || { media: [], text: [], subtitles: [], audio: [] };
+    state.selected = null;
+    state.currentTime = 0;
+    applyFormat();
     renderAll();
-  } else {
-    const video = document.createElement('video');
-    video.src = url;
-    video.preload = 'metadata';
-    video.muted = true;
-    video.playsInline = true;
-    video.onloadedmetadata = async () => {
-      base.trimEnd = Number.isFinite(video.duration) ? video.duration : base.duration;
-      base.duration = Math.min(Math.max(1, base.trimEnd - base.trimStart), 8);
-      base.width = video.videoWidth;
-      base.height = video.videoHeight;
-      renderAll();
+  }
+
+  function getCanvasSize(format = state.format) {
+    if (format === 'horizontal') return { width: 1920, height: 1080 };
+    if (format === 'square') return { width: 1080, height: 1080 };
+    return { width: 1080, height: 1920 };
+  }
+
+  function applyFormat() {
+    const size = getCanvasSize();
+    dom.canvas.width = size.width;
+    dom.canvas.height = size.height;
+    renderPreview(state.currentTime);
+    requestAnimationFrame(updateSafeArea);
+  }
+
+  function updateSafeArea() {
+    const rect = dom.canvas.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    dom.safeArea.style.width = `${rect.width * .82}px`;
+    dom.safeArea.style.height = `${rect.height * .82}px`;
+    dom.safeArea.style.left = `${rect.left + rect.width * .09 - dom.safeArea.parentElement.getBoundingClientRect().left}px`;
+    dom.safeArea.style.top = `${rect.top + rect.height * .09 - dom.safeArea.parentElement.getBoundingClientRect().top}px`;
+  }
+
+  function computeDuration() {
+    const all = [...state.clips.media, ...state.clips.text, ...state.clips.subtitles, ...state.clips.audio];
+    state.duration = Math.max(0, ...all.map(c => c.start + c.duration));
+    dom.timeSlider.max = Math.max(0.01, state.duration);
+    dom.timelineInfo.textContent = `Durata ${fmtTime(state.duration)}`;
+    dom.timeReadout.textContent = `${fmtTime(state.currentTime)} / ${fmtTime(state.duration)}`;
+  }
+
+  function snapTime(v) {
+    return state.snap ? Math.round(v * 10) / 10 : Math.round(v * 100) / 100;
+  }
+
+  function getAsset(id) {
+    return state.assets.find(a => a.id === id);
+  }
+  function findClip(id) {
+    for (const track of Object.keys(state.clips)) {
+      const clip = state.clips[track].find(c => c.id === id);
+      if (clip) return { clip, track };
+    }
+    return null;
+  }
+  function selectedClip() {
+    return state.selected ? findClip(state.selected.id) : null;
+  }
+  function activeClips(track, t = state.currentTime) {
+    return state.clips[track].filter(c => t >= c.start && t <= c.start + c.duration).sort((a,b)=>a.start-b.start);
+  }
+  function endOfTrack(track) {
+    return Math.max(0, ...state.clips[track].map(c => c.start + c.duration));
+  }
+
+  async function addFiles(files) {
+    const list = Array.from(files || []);
+    if (!list.length) return;
+    pushHistory();
+    for (const file of list) {
+      const url = URL.createObjectURL(file);
+      const id = uid('asset');
+      const type = file.type.startsWith('image/') ? 'image' : file.type.startsWith('video/') ? 'video' : file.type.startsWith('audio/') ? 'audio' : 'file';
+      const asset = { id, file, url, type, name:file.name, duration: type === 'image' ? 4 : 0, thumb:null, waveform:null };
+      state.assets.push(asset);
       try {
-        base.thumbnails = await buildVideoThumbs(url, base.trimEnd, 6);
-        renderAll();
-      } catch (error) {
-        console.warn('Miniature video non generate', error);
+        if (type === 'image') {
+          asset.thumb = url;
+          addMediaClip(asset, 4);
+        } else if (type === 'video') {
+          const meta = await loadVideoMeta(asset);
+          asset.duration = meta.duration || 5;
+          asset.thumb = meta.thumb;
+          addMediaClip(asset, Math.min(asset.duration || 5, 8));
+        } else if (type === 'audio') {
+          const meta = await loadAudioMeta(asset);
+          asset.duration = meta.duration || 30;
+          asset.waveform = meta.waveform;
+          addAudioClip(asset);
+        }
+      } catch (err) {
+        console.warn('Errore caricamento file', err);
       }
-    };
-    base.element = video;
-    state.media.push(base);
-    selectItem('media', base.id);
-    renderAll();
-  }
-}
-
-function nextMediaStart() {
-  return state.media.reduce((max, item) => Math.max(max, item.start + item.duration), 0);
-}
-
-async function handleImages(event) {
-  const files = Array.from(event.target.files || []);
-  files.forEach((file) => createMediaClip(file, 'image'));
-  event.target.value = '';
-}
-
-async function handleVideos(event) {
-  const files = Array.from(event.target.files || []);
-  files.forEach((file) => createMediaClip(file, 'video'));
-  event.target.value = '';
-}
-
-async function handleAudio(event) {
-  const file = event.target.files?.[0];
-  if (!file) return;
-  const url = URL.createObjectURL(file);
-  const audio = new Audio(url);
-  audio.preload = 'metadata';
-  audio.onloadedmetadata = async () => {
-    state.audio.url = url;
-    state.audio.file = file;
-    state.audio.fileName = file.name;
-    state.audio.duration = Number.isFinite(audio.duration) ? audio.duration : 0;
-    state.audio.trimStart = 0;
-    state.audio.trimEnd = state.audio.duration;
-    state.audio.timelineStart = 0;
-    state.audio.element = audio;
-    refs.audioInfo.textContent = `${file.name} • ${formatSeconds(state.audio.duration)}`;
-    await decodeAudioBuffer(file);
-    drawWaveform();
-    selectItem('audio', 'main');
-    renderAll();
-  };
-  event.target.value = '';
-}
-
-async function decodeAudioBuffer(file) {
-  try {
-    const arrayBuffer = await file.arrayBuffer();
-    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    state.audio.buffer = await audioCtx.decodeAudioData(arrayBuffer.slice(0));
-    await audioCtx.close();
-  } catch (error) {
-    console.warn('Impossibile decodificare audio', error);
-    state.audio.buffer = null;
-  }
-}
-
-function drawWaveform() {
-  const w = waveform.width;
-  const h = waveform.height;
-  waveCtx.clearRect(0, 0, w, h);
-  waveCtx.fillStyle = 'rgba(0,0,0,0.34)';
-  waveCtx.fillRect(0, 0, w, h);
-  if (!state.audio.buffer) {
-    waveCtx.fillStyle = 'rgba(255,255,255,0.68)';
-    waveCtx.font = '700 24px system-ui';
-    waveCtx.textAlign = 'center';
-    waveCtx.fillText('Carica un audio per vedere la forma d’onda', w / 2, h / 2);
-    return;
-  }
-  const data = state.audio.buffer.getChannelData(0);
-  const samples = 220;
-  const block = Math.floor(data.length / samples);
-  waveCtx.fillStyle = 'rgba(56,189,248,0.82)';
-  for (let i = 0; i < samples; i += 1) {
-    let sum = 0;
-    for (let j = 0; j < block; j += 1) {
-      sum += Math.abs(data[i * block + j] || 0);
     }
-    const amp = sum / block;
-    const barH = Math.max(2, amp * h * 2.2);
-    const x = (i / samples) * w;
-    waveCtx.fillRect(x, (h - barH) / 2, w / samples - 1, barH);
-  }
-  const startX = (state.audio.trimStart / state.audio.duration) * w;
-  const endX = (state.audio.trimEnd / state.audio.duration) * w;
-  waveCtx.fillStyle = 'rgba(0,0,0,0.44)';
-  waveCtx.fillRect(0, 0, startX, h);
-  waveCtx.fillRect(endX, 0, w - endX, h);
-}
-
-function addTextClip(start = state.currentTime) {
-  const item = {
-    id: uid('text'),
-    text: 'Scrivi il tuo testo',
-    start: clamp(start, 0, Math.max(projectDuration(), 30)),
-    duration: 4,
-    x: 50,
-    y: 78,
-    fontSize: 64,
-    color: '#ffffff',
-    strokeColor: 'rgba(0,0,0,0.82)',
-    bgOpacity: 0.45,
-    maxWidth: 82,
-    animation: 'fade',
-  };
-  state.texts.push(item);
-  selectItem('text', item.id);
-  renderAll();
-}
-
-function selectItem(type, id) {
-  state.selected = { type, id };
-  renderTimeline();
-  renderInspector();
-  drawFrame(state.currentTime);
-}
-
-function selectedMedia() {
-  if (state.selected?.type !== 'media') return null;
-  return state.media.find((item) => item.id === state.selected.id) || null;
-}
-
-function selectedText() {
-  if (state.selected?.type !== 'text') return null;
-  return state.texts.find((item) => item.id === state.selected.id) || null;
-}
-
-function renderAll() {
-  updateDurationUi();
-  renderTimeline();
-  renderInspector();
-  drawFrame(state.currentTime);
-}
-
-function renderTimeline() {
-  const total = Math.max(projectDuration(), 12);
-  const scale = pxPerSecond();
-  const width = Math.ceil(total * scale + 180);
-  if (!state.media.length && !state.texts.length && !state.audio.url) {
-    refs.timelineEditor.className = 'timeline-editor empty';
-    refs.timelineEditor.innerHTML = '<p>Aggiungi foto, video o audio per iniziare il montaggio.</p>';
-    return;
+    renderAll();
   }
 
-  refs.timelineEditor.className = 'timeline-editor';
-  refs.timelineEditor.innerHTML = `
-    <div class="timeline-stage" style="width:${width + 106}px">
-      <div class="ruler" style="width:${width}px">${renderTicks(total, scale)}</div>
-      <div id="timelinePlayhead" class="playhead" style="left:${106 + state.currentTime * scale}px"></div>
-      ${renderLane('Foto / Video', 'media', width, renderMediaBlocks(scale))}
-      ${renderLane('Testi', 'text', width, renderTextBlocks(scale))}
-      ${renderLane('Audio', 'audio', width, renderAudioBlock(scale))}
-    </div>
-  `;
-  bindTimelineEvents();
-}
-
-function renderTicks(total, scale) {
-  const maxSec = Math.ceil(total);
-  let html = '';
-  for (let sec = 0; sec <= maxSec; sec += 1) {
-    const isMajor = sec % 5 === 0;
-    html += `<div class="tick" style="left:${sec * scale}px; opacity:${isMajor ? 1 : 0.38}; height:${isMajor ? 36 : 16}px">${isMajor ? formatSeconds(sec) : ''}</div>`;
-  }
-  return html;
-}
-
-function renderLane(label, kind, width, content) {
-  return `
-    <div class="lane-row">
-      <div class="lane-label">${label}</div>
-      <div class="lane-track ${kind}-track" style="width:${width}px">${content}</div>
-    </div>
-  `;
-}
-
-function isSelected(type, id) {
-  return state.selected?.type === type && state.selected?.id === id;
-}
-
-function renderMediaBlocks(scale) {
-  return state.media.map((item) => {
-    const left = item.start * scale;
-    const width = Math.max(28, item.duration * scale);
-    const icon = item.type === 'image' ? '📷' : '🎬';
-    return `
-      <div class="clip media ${isSelected('media', item.id) ? 'selected' : ''}" data-type="media" data-id="${item.id}" style="left:${left}px; width:${width}px">
-        ${renderClipThumbs(item)}
-        <div class="resize-handle left" data-mode="resize-left"></div>
-        <div class="clip-content" data-mode="drag">
-          <strong>${icon} ${escapeHtml(item.fileName)}</strong>
-          <span>${formatSeconds(item.start)} • ${item.duration.toFixed(1)}s • ${labelFor(item.filter)} / ${labelFor(item.transition)}</span>
-        </div>
-        <div class="resize-handle right" data-mode="resize-right"></div>
-      </div>
-    `;
-  }).join('');
-}
-
-function renderTextBlocks(scale) {
-  return state.texts.map((item) => {
-    const left = item.start * scale;
-    const width = Math.max(28, item.duration * scale);
-    return `
-      <div class="clip text ${isSelected('text', item.id) ? 'selected' : ''}" data-type="text" data-id="${item.id}" style="left:${left}px; width:${width}px">
-        <div class="resize-handle left" data-mode="resize-left"></div>
-        <div class="clip-content" data-mode="drag">
-          <strong>📝 ${escapeHtml(item.text || 'Testo')}</strong>
-          <span>${formatSeconds(item.start)} • ${item.duration.toFixed(1)}s</span>
-        </div>
-        <div class="resize-handle right" data-mode="resize-right"></div>
-      </div>
-    `;
-  }).join('');
-}
-
-function renderAudioBlock(scale) {
-  if (!state.audio.url) return '';
-  const left = state.audio.timelineStart * scale;
-  const width = Math.max(28, audioDuration() * scale);
-  return `
-    <div class="clip audio ${isSelected('audio', 'main') ? 'selected' : ''}" data-type="audio" data-id="main" style="left:${left}px; width:${width}px">
-      <div class="resize-handle left" data-mode="resize-left"></div>
-      <div class="clip-content" data-mode="drag">
-        <strong>🎵 ${escapeHtml(state.audio.fileName)}</strong>
-        <span>${formatSeconds(state.audio.timelineStart)} • taglio ${formatSeconds(state.audio.trimStart)} - ${formatSeconds(state.audio.trimEnd)}</span>
-      </div>
-      <div class="resize-handle right" data-mode="resize-right"></div>
-    </div>
-  `;
-}
-
-function labelFor(value) {
-  const map = {
-    none: 'nessuno', cinema: 'cinema', warm: 'caldo', cold: 'freddo', bw: 'B/N', vintage: 'vintage', dramatic: 'drama', softBlur: 'soft',
-    fade: 'fade', slide: 'slide', zoom: 'zoom', wipe: 'wipe', zoomIn: 'zoom+', zoomOut: 'zoom-', panLeft: 'pan sx', panRight: 'pan dx', shake: 'shake',
-  };
-  return map[value] || value || 'nessuno';
-}
-
-function bindTimelineEvents() {
-  refs.timelineEditor.querySelectorAll('.clip').forEach((clip) => {
-    clip.addEventListener('pointerdown', (event) => {
-      const mode = event.target.dataset.mode || 'drag';
-      beginTimelinePointer(event, clip.dataset.type, clip.dataset.id, mode);
+  function addMediaClip(asset, duration = 4) {
+    const start = endOfTrack('media');
+    state.clips.media.push({
+      id: uid('clip'), track:'media', kind:asset.type, assetId:asset.id, label:asset.name,
+      start, duration: clamp(duration, .3, 60), trimStart:0, opacity:1,
+      transition:'fade', transitionDuration:.45, effect:'cinematic', motion: asset.type === 'image' ? 'kenburns-in' : 'none',
+      volume:1,
     });
-  });
-}
+  }
+  function addAudioClip(asset) {
+    const start = endOfTrack('audio');
+    state.clips.audio.push({ id:uid('clip'), track:'audio', kind:'audio', assetId:asset.id, label:asset.name, start, duration:asset.duration || 30, trimStart:0, volume:1, fadeIn:.25, fadeOut:.4 });
+  }
+  function addTextClip() {
+    pushHistory();
+    state.clips.text.push({ id:uid('clip'), track:'text', kind:'text', label:'Titolo', text:'Scrivi il tuo testo', start:state.currentTime, duration:3, x:.5, y:.18, size:64, color:'#ffffff', background:'rgba(0,0,0,0)', font:'Inter', weight:800, animation:'rise', align:'center', shadow:true });
+    renderAll();
+  }
+  function addSubtitleClip(text = 'Nuovo sottotitolo', start = state.currentTime, duration = 2) {
+    state.clips.subtitles.push({ id:uid('clip'), track:'subtitles', kind:'subtitle', label:'Sottotitolo', text, start, duration, x:.5, y:.82, size:42, color:'#ffffff', background:'rgba(0,0,0,.62)', font:'Inter', weight:800, animation:'pop', align:'center', shadow:true });
+  }
 
-function beginTimelinePointer(event, type, id, mode) {
-  event.preventDefault();
-  event.stopPropagation();
-  selectItem(type, id);
-  const scale = pxPerSecond();
-  const startX = event.clientX;
-  const initial = snapshotItem(type, id);
-  const pointerId = event.pointerId;
-  event.currentTarget?.setPointerCapture?.(pointerId);
+  function loadVideoMeta(asset) {
+    return new Promise((resolve, reject) => {
+      const video = document.createElement('video');
+      video.preload = 'metadata';
+      video.muted = true;
+      video.playsInline = true;
+      video.src = asset.url;
+      video.onloadedmetadata = () => {
+        const captureAt = Math.min(.4, Math.max(0, video.duration / 5));
+        video.currentTime = captureAt;
+      };
+      video.onseeked = () => {
+        const c = document.createElement('canvas');
+        c.width = 320; c.height = 180;
+        const x = c.getContext('2d');
+        x.fillStyle = '#111'; x.fillRect(0,0,c.width,c.height);
+        drawCover(x, video, 0, 0, c.width, c.height);
+        resolve({ duration: video.duration, thumb: c.toDataURL('image/jpeg', .72) });
+      };
+      video.onerror = reject;
+    });
+  }
 
-  const onMove = (moveEvent) => {
-    const dx = moveEvent.clientX - startX;
-    const delta = dx / scale;
-    applyTimelineChange(type, id, mode, initial, delta);
-    updateDurationUi();
+  function loadAudioMeta(asset) {
+    return new Promise((resolve) => {
+      const audio = document.createElement('audio');
+      audio.preload = 'metadata';
+      audio.src = asset.url;
+      audio.onloadedmetadata = async () => {
+        let waveform = null;
+        try { waveform = await makeWaveform(asset.file); } catch (e) { console.warn(e); }
+        resolve({ duration: audio.duration || 30, waveform });
+      };
+      audio.onerror = () => resolve({ duration:30, waveform:null });
+    });
+  }
+
+  async function makeWaveform(file) {
+    const array = await file.arrayBuffer();
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    const ac = new AudioCtx();
+    const buffer = await ac.decodeAudioData(array.slice(0));
+    const data = buffer.getChannelData(0);
+    const samples = 90;
+    const block = Math.floor(data.length / samples);
+    const peaks = [];
+    for (let i=0;i<samples;i++) {
+      let sum = 0;
+      for (let j=0;j<block;j++) sum += Math.abs(data[i*block+j] || 0);
+      peaks.push(Math.min(1, (sum / block) * 2.6));
+    }
+    await ac.close();
+    return waveformSvg(peaks);
+  }
+  function waveformSvg(peaks) {
+    const w = 900, h = 120;
+    const bar = w / peaks.length;
+    const rects = peaks.map((p,i)=>{
+      const bh = Math.max(3, p * h);
+      const y = (h - bh)/2;
+      return `<rect x="${(i*bar).toFixed(1)}" y="${y.toFixed(1)}" width="${Math.max(2,bar*.55).toFixed(1)}" height="${bh.toFixed(1)}" rx="2" fill="rgba(255,255,255,.9)"/>`;
+    }).join('');
+    return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${rects}</svg>`)}`;
+  }
+
+  function renderAll() {
+    computeDuration();
+    renderLibrary();
+    renderPresets();
     renderTimeline();
     renderInspector();
-    drawFrame(state.currentTime);
-  };
-  const onUp = () => {
-    window.removeEventListener('pointermove', onMove);
-    window.removeEventListener('pointerup', onUp);
-    renderAll();
-  };
-  window.addEventListener('pointermove', onMove);
-  window.addEventListener('pointerup', onUp, { once: true });
-}
-
-function snapshotItem(type, id) {
-  if (type === 'media') {
-    const item = state.media.find((entry) => entry.id === id);
-    return { start: item.start, duration: item.duration, trimStart: item.trimStart, trimEnd: item.trimEnd };
+    renderPreview(state.currentTime);
+    saveAutosave();
   }
-  if (type === 'text') {
-    const item = state.texts.find((entry) => entry.id === id);
-    return { start: item.start, duration: item.duration };
-  }
-  return { timelineStart: state.audio.timelineStart, trimStart: state.audio.trimStart, trimEnd: state.audio.trimEnd };
-}
 
-function applyTimelineChange(type, id, mode, initial, delta) {
-  const minDuration = 0.35;
-  if (type === 'media') {
-    const item = state.media.find((entry) => entry.id === id);
-    if (!item) return;
-    if (mode === 'drag') item.start = Math.max(0, initial.start + delta);
-    if (mode === 'resize-right') item.duration = Math.max(minDuration, initial.duration + delta);
-    if (mode === 'resize-left') {
-      const newStart = Math.max(0, initial.start + delta);
-      const end = initial.start + initial.duration;
-      item.start = Math.min(newStart, end - minDuration);
-      item.duration = Math.max(minDuration, end - item.start);
-    }
-    if (item.type === 'video') {
-      const available = Math.max(minDuration, (item.trimEnd || item.duration) - (item.trimStart || 0));
-      item.duration = Math.min(item.duration, available);
-    }
-  }
-  if (type === 'text') {
-    const item = state.texts.find((entry) => entry.id === id);
-    if (!item) return;
-    if (mode === 'drag') item.start = Math.max(0, initial.start + delta);
-    if (mode === 'resize-right') item.duration = Math.max(minDuration, initial.duration + delta);
-    if (mode === 'resize-left') {
-      const newStart = Math.max(0, initial.start + delta);
-      const end = initial.start + initial.duration;
-      item.start = Math.min(newStart, end - minDuration);
-      item.duration = Math.max(minDuration, end - item.start);
-    }
-  }
-  if (type === 'audio' && state.audio.url) {
-    const dur = state.audio.duration || 0;
-    if (mode === 'drag') state.audio.timelineStart = Math.max(0, initial.timelineStart + delta);
-    if (mode === 'resize-right') state.audio.trimEnd = clamp(initial.trimEnd + delta, state.audio.trimStart + minDuration, dur);
-    if (mode === 'resize-left') {
-      const newTrimStart = clamp(initial.trimStart + delta, 0, initial.trimEnd - minDuration);
-      state.audio.timelineStart = Math.max(0, initial.timelineStart + delta);
-      state.audio.trimStart = newTrimStart;
-    }
-    drawWaveform();
-  }
-}
-
-function renderInspector() {
-  const selected = state.selected;
-  if (!selected) {
-    refs.selectedInfo.textContent = 'Nessun elemento selezionato.';
-    refs.inspector.className = 'inspector-empty';
-    refs.inspector.innerHTML = '<p>Seleziona un blocco nella timeline per modificarlo.</p>';
-    return;
-  }
-  refs.inspector.className = '';
-  if (selected.type === 'media') return renderMediaInspector();
-  if (selected.type === 'text') return renderTextInspector();
-  if (selected.type === 'audio') return renderAudioInspector();
-}
-
-function renderMediaInspector() {
-  const item = selectedMedia();
-  if (!item) return;
-  refs.selectedInfo.textContent = `${item.type === 'image' ? 'Foto' : 'Video'}: ${item.fileName}`;
-  refs.inspector.innerHTML = `
-    <div class="inspector-grid">
-      <label>Inizio sulla timeline <input data-field="start" type="number" min="0" step="0.1" value="${item.start.toFixed(2)}"></label>
-      <label>Durata clip <input data-field="duration" type="number" min="0.35" step="0.1" value="${item.duration.toFixed(2)}"></label>
-      <label>Zoom <input data-field="zoom" type="number" min="1" max="2" step="0.05" value="${(item.zoom || 1).toFixed(2)}"></label>
-      <label>Filtro
-        <select data-field="filter">
-          ${options(['none','cinema','warm','cold','bw','vintage','dramatic','softBlur'], item.filter)}
-        </select>
-      </label>
-      <label>Transizione
-        <select data-field="transition">
-          ${options(['none','fade','slide','zoom','wipe'], item.transition)}
-        </select>
-      </label>
-      <label>Durata transizione <input data-field="transitionDuration" type="number" min="0" max="3" step="0.1" value="${(item.transitionDuration || 0).toFixed(1)}"></label>
-      <label>Effetto movimento
-        <select data-field="motion">
-          ${options(['none','zoomIn','zoomOut','panLeft','panRight','shake'], item.motion)}
-        </select>
-      </label>
-      ${item.type === 'video' ? `
-        <label>Taglio video da <input data-field="trimStart" type="number" min="0" step="0.1" value="${(item.trimStart || 0).toFixed(2)}"></label>
-        <label>Taglio video a <input data-field="trimEnd" type="number" min="0" step="0.1" value="${(item.trimEnd || 0).toFixed(2)}"></label>
-      ` : ''}
-    </div>
-    <div class="inspector-actions">
-      <button id="makeTextFromClip" class="secondary">+ Testo sopra questa clip</button>
-      <button id="duplicateSelected" class="ghost">Duplica</button>
-      <button id="deleteSelected" class="danger">Elimina</button>
-    </div>
-  `;
-  bindInspectorInputs('media', item);
-  $('makeTextFromClip').onclick = () => addTextClip(item.start);
-  $('duplicateSelected').onclick = duplicateSelected;
-  $('deleteSelected').onclick = deleteSelected;
-}
-
-function renderTextInspector() {
-  const item = selectedText();
-  if (!item) return;
-  refs.selectedInfo.textContent = `Testo: ${item.text.slice(0, 40)}`;
-  refs.inspector.innerHTML = `
-    <div class="inspector-grid">
-      <label class="inspector-wide">Testo <textarea data-field="text">${escapeHtml(item.text)}</textarea></label>
-      <label>Inizio <input data-field="start" type="number" min="0" step="0.1" value="${item.start.toFixed(2)}"></label>
-      <label>Durata <input data-field="duration" type="number" min="0.35" step="0.1" value="${item.duration.toFixed(2)}"></label>
-      <label>Grandezza <input data-field="fontSize" type="number" min="18" max="180" step="2" value="${item.fontSize}"></label>
-      <label>Colore <input data-field="color" type="color" value="${item.color}"></label>
-      <label>Posizione X <input data-field="x" type="range" min="0" max="100" step="1" value="${item.x}"></label>
-      <label>Posizione Y <input data-field="y" type="range" min="0" max="100" step="1" value="${item.y}"></label>
-      <label>Larghezza testo <input data-field="maxWidth" type="range" min="25" max="95" step="1" value="${item.maxWidth}"></label>
-      <label>Sfondo <input data-field="bgOpacity" type="range" min="0" max="0.9" step="0.05" value="${item.bgOpacity}"></label>
-      <label>Animazione
-        <select data-field="animation">
-          ${options(['none','fade','pop','slideUp'], item.animation)}
-        </select>
-      </label>
-    </div>
-    <div class="inspector-actions">
-      <button id="duplicateSelected" class="ghost">Duplica</button>
-      <button id="deleteSelected" class="danger">Elimina</button>
-    </div>
-  `;
-  bindInspectorInputs('text', item);
-  $('duplicateSelected').onclick = duplicateSelected;
-  $('deleteSelected').onclick = deleteSelected;
-}
-
-function renderAudioInspector() {
-  if (!state.audio.url) return;
-  refs.selectedInfo.textContent = `Audio: ${state.audio.fileName}`;
-  refs.inspector.innerHTML = `
-    <div class="inspector-grid">
-      <label>Inizio sulla timeline <input data-audio="timelineStart" type="number" min="0" step="0.1" value="${state.audio.timelineStart.toFixed(2)}"></label>
-      <label>Taglio audio da <input data-audio="trimStart" type="number" min="0" step="0.1" value="${state.audio.trimStart.toFixed(2)}"></label>
-      <label>Taglio audio a <input data-audio="trimEnd" type="number" min="0" step="0.1" value="${state.audio.trimEnd.toFixed(2)}"></label>
-      <label>Volume <input id="audioVolumeInspector" data-audio="volume" type="range" min="0" max="1" step="0.05" value="${refs.audioVolume.value}"></label>
-    </div>
-    <div class="inspector-actions">
-      <button id="fitFromInspector" class="secondary">Adatta foto/video a questo audio</button>
-      <button id="deleteSelected" class="danger">Rimuovi audio</button>
-    </div>
-  `;
-  refs.inspector.querySelectorAll('[data-audio]').forEach((input) => {
-    input.addEventListener('input', () => {
-      const field = input.dataset.audio;
-      if (field === 'volume') refs.audioVolume.value = input.value;
-      if (field === 'timelineStart') state.audio.timelineStart = Math.max(0, Number(input.value || 0));
-      if (field === 'trimStart') state.audio.trimStart = clamp(input.value, 0, state.audio.trimEnd - 0.35);
-      if (field === 'trimEnd') state.audio.trimEnd = clamp(input.value, state.audio.trimStart + 0.35, state.audio.duration);
-      drawWaveform();
-      renderAll();
-    });
-  });
-  $('fitFromInspector').onclick = fitMediaToAudio;
-  $('deleteSelected').onclick = deleteSelected;
-}
-
-function bindInspectorInputs(type, item) {
-  refs.inspector.querySelectorAll('[data-field]').forEach((input) => {
-    input.addEventListener('input', () => {
-      const field = input.dataset.field;
-      const numericFields = ['start','duration','zoom','transitionDuration','trimStart','trimEnd','fontSize','x','y','maxWidth','bgOpacity'];
-      if (numericFields.includes(field)) item[field] = Number(input.value || 0);
-      else item[field] = input.value;
-
-      if (type === 'media') {
-        item.start = Math.max(0, item.start || 0);
-        item.duration = Math.max(0.35, item.duration || 0.35);
-        item.zoom = clamp(item.zoom || 1, 1, 2);
-        item.transitionDuration = clamp(item.transitionDuration || 0, 0, 3);
-        if (item.type === 'video') {
-          item.trimStart = clamp(item.trimStart || 0, 0, Math.max(0, item.trimEnd - 0.35));
-          item.trimEnd = clamp(item.trimEnd || item.element?.duration || item.duration, item.trimStart + 0.35, item.element?.duration || item.trimEnd || item.duration);
-          item.duration = Math.min(item.duration, item.trimEnd - item.trimStart);
-        }
-      }
-      if (type === 'text') {
-        item.start = Math.max(0, item.start || 0);
-        item.duration = Math.max(0.35, item.duration || 0.35);
-      }
-      renderAll();
-    });
-  });
-}
-
-function options(values, selected) {
-  const labels = {
-    none: 'Nessuno', cinema: 'Cinema', warm: 'Caldo', cold: 'Freddo', bw: 'Bianco e nero', vintage: 'Vintage', dramatic: 'Drammatico', softBlur: 'Sfocato soft',
-    fade: 'Dissolvenza', slide: 'Scorrimento', zoom: 'Zoom', wipe: 'Tendina', zoomIn: 'Zoom lento avanti', zoomOut: 'Zoom lento indietro', panLeft: 'Panoramica sinistra', panRight: 'Panoramica destra', shake: 'Vibrazione',
-    pop: 'Pop', slideUp: 'Scorri dal basso',
-  };
-  return values.map((value) => `<option value="${value}" ${value === selected ? 'selected' : ''}>${labels[value] || value}</option>`).join('');
-}
-
-function duplicateSelected() {
-  if (!state.selected) return;
-  if (state.selected.type === 'media') {
-    const item = selectedMedia();
-    if (!item) return;
-    const copy = { ...item, id: uid(item.type), start: item.start + item.duration, element: item.element };
-    state.media.push(copy);
-    selectItem('media', copy.id);
-  } else if (state.selected.type === 'text') {
-    const item = selectedText();
-    if (!item) return;
-    const copy = { ...item, id: uid('text'), start: item.start + 0.5 };
-    state.texts.push(copy);
-    selectItem('text', copy.id);
-  }
-  renderAll();
-}
-
-function deleteSelected() {
-  if (!state.selected) return;
-  if (state.selected.type === 'media') state.media = state.media.filter((item) => item.id !== state.selected.id);
-  if (state.selected.type === 'text') state.texts = state.texts.filter((item) => item.id !== state.selected.id);
-  if (state.selected.type === 'audio') {
-    stopAudioPreview();
-    state.audio = { url: null, file: null, fileName: '', duration: 0, trimStart: 0, trimEnd: 0, timelineStart: 0, buffer: null, element: null };
-    refs.audioInfo.textContent = 'Nessun audio caricato.';
-    drawWaveform();
-  }
-  state.selected = null;
-  renderAll();
-}
-
-function compactMedia() {
-  let cursor = 0;
-  state.media
-    .sort((a, b) => a.start - b.start)
-    .forEach((item) => {
-      item.start = cursor;
-      cursor += item.duration;
-    });
-  renderAll();
-}
-
-function fitMediaToAudio() {
-  if (!state.media.length || !state.audio.url || audioDuration() <= 0) {
-    setStatus('Carica almeno una clip e una traccia audio.');
-    return;
-  }
-  const total = audioDuration();
-  const each = Math.max(0.35, total / state.media.length);
-  let cursor = state.audio.timelineStart;
-  state.media
-    .sort((a, b) => a.start - b.start)
-    .forEach((item) => {
-      item.start = cursor;
-      item.duration = each;
-      if (item.type === 'video') item.duration = Math.min(each, Math.max(0.35, item.trimEnd - item.trimStart));
-      cursor += item.duration;
-    });
-  state.currentTime = state.audio.timelineStart;
-  setStatus('Foto/video adattati alla lunghezza della traccia audio.');
-  renderAll();
-}
-
-function applyEffectsToItem(item) {
-  item.filter = refs.filterPreset.value;
-  item.transition = refs.transitionPreset.value;
-  item.motion = refs.motionPreset.value;
-  item.transitionDuration = Number(refs.transitionDuration.value || 0);
-}
-
-function applyFxSelected() {
-  const item = selectedMedia();
-  if (!item) {
-    setStatus('Seleziona prima una clip foto/video nella timeline.');
-    return;
-  }
-  applyEffectsToItem(item);
-  setStatus('Effetti applicati alla clip selezionata.');
-  renderAll();
-}
-
-function applyFxAll() {
-  if (!state.media.length) return;
-  state.media.forEach(applyEffectsToItem);
-  setStatus('Effetti applicati a tutte le clip.');
-  renderAll();
-}
-
-function updatePlayheadFromScrub() {
-  state.currentTime = Number(refs.scrubRange.value || 0);
-  updateDurationUi();
-  drawFrame(state.currentTime);
-  if (state.isPlaying) syncAudioToTimeline();
-}
-
-function startPreview() {
-  const total = projectDuration();
-  if (total <= 0) {
-    setStatus('Aggiungi contenuti prima di avviare l’anteprima.');
-    return;
-  }
-  stopPreview(false);
-  state.isPlaying = true;
-  state.previewStartTime = state.currentTime;
-  state.previewStartPerf = performance.now();
-  syncAudioToTimeline();
-  setStatus('Anteprima in riproduzione...');
-  const loop = (now) => {
-    if (!state.isPlaying) return;
-    const elapsed = (now - state.previewStartPerf) / 1000;
-    state.currentTime = state.previewStartTime + elapsed;
-    if (state.currentTime >= total) {
-      state.currentTime = total;
-      stopPreview(false);
-      renderAll();
-      setStatus('Anteprima terminata.');
+  function renderLibrary() {
+    if (!state.assets.length) {
+      dom.assetLibrary.className = 'asset-library empty-state';
+      dom.assetLibrary.textContent = 'Nessun file caricato';
       return;
     }
-    drawFrame(state.currentTime);
-    updateDurationUi();
-    syncAudioToTimeline(false);
-    state.rafId = requestAnimationFrame(loop);
-  };
-  state.rafId = requestAnimationFrame(loop);
-}
+    dom.assetLibrary.className = 'asset-library';
+    dom.assetLibrary.innerHTML = '';
+    for (const asset of state.assets) {
+      const div = document.createElement('div');
+      div.className = 'asset-card';
+      div.innerHTML = `
+        <div class="asset-thumb" ${asset.thumb ? `style="background-image:url('${asset.thumb}')"` : ''}>${asset.type === 'audio' ? '♪' : asset.type === 'video' ? '▶' : ''}</div>
+        <div><b>${escapeHtml(asset.name)}</b><span>${asset.type} • ${fmtTime(asset.duration || 0)}</span></div>`;
+      div.addEventListener('click', () => {
+        pushHistory();
+        if (asset.type === 'audio') addAudioClip(asset);
+        else if (asset.type === 'image' || asset.type === 'video') addMediaClip(asset, asset.type === 'image' ? 4 : Math.min(asset.duration, 8));
+        renderAll();
+      });
+      dom.assetLibrary.appendChild(div);
+    }
+  }
 
-function stopPreview(redraw = true) {
-  state.isPlaying = false;
-  if (state.rafId) cancelAnimationFrame(state.rafId);
-  state.rafId = null;
-  stopAudioPreview();
-  pauseInactiveVideos(null);
-  if (redraw) {
-    setStatus('Anteprima fermata.');
+  function renderPresets() {
+    if (!dom.effectGrid.dataset.ready) {
+      dom.effectGrid.innerHTML = EFFECTS.map(e => `<button class="preset" style="--glow:${e.glow || 'rgba(124,92,255,.2)'}" data-effect="${e.id}"><b>${e.name}</b><span>${e.desc}</span></button>`).join('');
+      dom.motionGrid.innerHTML = MOTIONS.map(m => `<button class="preset" data-motion="${m.id}"><b>${m.name}</b><span>${m.desc}</span></button>`).join('');
+      dom.transitionGrid.innerHTML = TRANSITIONS.map(t => `<button class="preset" data-transition="${t.id}"><b>${t.name}</b><span>${t.desc}</span></button>`).join('');
+      dom.effectGrid.dataset.ready = '1';
+      $$('[data-effect]').forEach(b => b.addEventListener('click', () => applyToSelected('effect', b.dataset.effect, 'media')));
+      $$('[data-motion]').forEach(b => b.addEventListener('click', () => applyToSelected('motion', b.dataset.motion, 'media')));
+      $$('[data-transition]').forEach(b => b.addEventListener('click', () => applyToSelected('transition', b.dataset.transition, 'media')));
+    }
+  }
+
+  function applyToSelected(key, value, trackExpected) {
+    const found = selectedClip();
+    if (!found) return alert('Seleziona prima una clip nella timeline.');
+    if (trackExpected && found.track !== trackExpected) return alert('Questo preset si applica solo alle clip foto/video.');
+    pushHistory();
+    found.clip[key] = value;
+    if (key === 'transition' && !found.clip.transitionDuration) found.clip.transitionDuration = .45;
     renderAll();
   }
-}
 
-function syncAudioToTimeline(forceRestart = true) {
-  if (!state.audio.element || !state.audio.url) return;
-  const audio = state.audio.element;
-  const t = state.currentTime;
-  const audioStart = state.audio.timelineStart;
-  const audioEnd = audioStart + audioDuration();
-  if (t < audioStart || t > audioEnd) {
-    audio.pause();
-    return;
+  function renderTimeline() {
+    const totalWidth = Math.max(900, (Math.max(state.duration, 12) + 2) * state.pps);
+    document.documentElement.style.setProperty('--pps', `${state.pps}px`);
+    [dom.ruler, dom.mediaTrack, dom.textTrack, dom.subtitlesTrack, dom.audioTrack].forEach(el => el.style.width = `${totalWidth}px`);
+    renderRuler(totalWidth);
+    renderTrack('media', dom.mediaTrack);
+    renderTrack('text', dom.textTrack);
+    renderTrack('subtitles', dom.subtitlesTrack);
+    renderTrack('audio', dom.audioTrack);
+    updatePlayhead();
   }
-  const target = state.audio.trimStart + (t - audioStart);
-  audio.volume = Number(refs.audioVolume.value || 0.85);
-  if (Math.abs(audio.currentTime - target) > 0.18 || forceRestart) {
-    audio.currentTime = target;
-  }
-  if (audio.paused) audio.play().catch(() => {});
-}
 
-function previewAudioOnly() {
-  if (!state.audio.element) {
-    setStatus('Carica prima un audio.');
-    return;
-  }
-  stopAudioPreview();
-  const audio = state.audio.element;
-  audio.currentTime = state.audio.trimStart;
-  audio.volume = Number(refs.audioVolume.value || 0.85);
-  audio.play().catch(() => {});
-  state.previewAudio = audio;
-  const stopAt = state.audio.trimEnd;
-  const checker = setInterval(() => {
-    if (!state.previewAudio || audio.paused || audio.currentTime >= stopAt) {
-      clearInterval(checker);
-      stopAudioPreview();
+  function renderRuler(totalWidth) {
+    dom.ruler.innerHTML = '';
+    const seconds = Math.ceil(totalWidth / state.pps);
+    for (let s=0;s<=seconds;s++) {
+      const tick = document.createElement('div');
+      tick.className = 'tick';
+      tick.style.left = `${s * state.pps}px`;
+      tick.textContent = `${s}s`;
+      dom.ruler.appendChild(tick);
     }
-  }, 100);
-}
-
-function stopAudioPreview() {
-  if (state.audio.element) state.audio.element.pause();
-  if (state.previewAudio) state.previewAudio.pause();
-  state.previewAudio = null;
-}
-
-async function buildAudioStream(total) {
-  const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  const destination = audioCtx.createMediaStreamDestination();
-  const audio = state.audio;
-
-  if (!audio.buffer || !audio.url || audioDuration() <= 0) {
-    return { audioCtx, stream: destination.stream, start: () => {} };
   }
 
-  const source = audioCtx.createBufferSource();
-  source.buffer = audio.buffer;
-  const gain = audioCtx.createGain();
-  const volume = Number(refs.audioVolume.value || 0.85);
-  const fade = Number(refs.musicFadeSelect.value || 0);
-  const startAt = Math.max(0, audio.timelineStart);
-  const duration = Math.min(audioDuration(), Math.max(0, total - startAt));
-  source.connect(gain);
-  gain.connect(destination);
+  function renderTrack(track, lane) {
+    lane.innerHTML = '';
+    const template = $('#clipTemplate');
+    for (const clip of state.clips[track]) {
+      const node = template.content.firstElementChild.cloneNode(true);
+      node.classList.add(track);
+      if (state.selected?.id === clip.id) node.classList.add('selected');
+      node.dataset.clipId = clip.id;
+      node.dataset.track = track;
+      node.style.left = `${clip.start * state.pps}px`;
+      node.style.width = `${Math.max(22, clip.duration * state.pps)}px`;
+      const thumb = $('.clip-thumb', node);
+      const content = $('.clip-content', node);
+      const asset = clip.assetId ? getAsset(clip.assetId) : null;
+      const thumbUrl = asset?.thumb || asset?.waveform;
+      if (thumbUrl) thumb.style.backgroundImage = `url('${thumbUrl}')`;
+      if (track === 'audio' && asset?.waveform) thumb.style.backgroundImage = `url('${asset.waveform}')`;
+      content.innerHTML = `<b>${escapeHtml(clip.label || clip.text || track)}</b><small>${fmtTime(clip.start)} → ${fmtTime(clip.start + clip.duration)}</small>`;
+      if (track === 'text' || track === 'subtitles') content.innerHTML = `<b>${escapeHtml(clip.text || clip.label)}</b><small>${fmtTime(clip.duration)}</small>`;
+      node.addEventListener('pointerdown', onClipPointerDown);
+      node.addEventListener('click', (e) => { e.stopPropagation(); selectClip(clip.id, track); });
+      lane.appendChild(node);
+    }
+  }
 
-  return {
-    audioCtx,
-    stream: destination.stream,
-    start: () => {
-      const now = audioCtx.currentTime;
-      gain.gain.setValueAtTime(volume, now + startAt);
-      if (fade > 0) {
-        gain.gain.setValueAtTime(0.0001, now + startAt);
-        gain.gain.exponentialRampToValueAtTime(Math.max(0.0001, volume), now + startAt + Math.min(fade, duration / 2));
-        gain.gain.setValueAtTime(volume, now + startAt + Math.max(0, duration - fade));
-        gain.gain.exponentialRampToValueAtTime(0.0001, now + startAt + duration);
+  function onClipPointerDown(e) {
+    const node = e.currentTarget;
+    const id = node.dataset.clipId;
+    const track = node.dataset.track;
+    const found = findClip(id);
+    if (!found) return;
+    selectClip(id, track, false);
+    const clip = found.clip;
+    const startX = e.clientX;
+    const original = { start: clip.start, duration: clip.duration, trimStart: clip.trimStart || 0 };
+    const action = e.target.classList.contains('left') ? 'resize-left' : e.target.classList.contains('right') ? 'resize-right' : 'move';
+    node.setPointerCapture(e.pointerId);
+    const onMove = (ev) => {
+      const dx = (ev.clientX - startX) / state.pps;
+      if (action === 'move') {
+        clip.start = snapTime(Math.max(0, original.start + dx));
+      } else if (action === 'resize-right') {
+        clip.duration = snapTime(Math.max(.2, original.duration + dx));
+      } else if (action === 'resize-left') {
+        const newStart = snapTime(Math.max(0, original.start + dx));
+        const end = original.start + original.duration;
+        clip.start = Math.min(newStart, end - .2);
+        clip.duration = snapTime(Math.max(.2, end - clip.start));
+        if (clip.kind === 'audio' || clip.kind === 'video') clip.trimStart = Math.max(0, original.trimStart + (clip.start - original.start));
       }
-      try { source.start(now + startAt, audio.trimStart, duration); } catch (_) { /* ignore duplicate start */ }
-    },
-  };
-}
-
-function setExportButtons(disabled) {
-  refs.exportBtn.disabled = disabled;
-  refs.exportMp4Btn.disabled = disabled;
-}
-
-function prepareDownload(blob, extension, message) {
-  const url = URL.createObjectURL(blob);
-  refs.downloadLink.href = url;
-  refs.downloadLink.download = `videomaker-studio-${Date.now()}.${extension}`;
-  refs.downloadLink.textContent = `Scarica video ${extension.toUpperCase()}`;
-  refs.downloadTitle.textContent = `Video ${extension.toUpperCase()} pronto ✅`;
-  refs.downloadMessage.textContent = message;
-  refs.downloadBox.classList.remove('hidden');
-}
-
-async function recordWebmBlob(total) {
-  const fps = Number(refs.fpsSelect.value || 30);
-  const canvasStream = stage.captureStream(fps);
-  const audioPackage = await buildAudioStream(total);
-  const tracks = [...canvasStream.getVideoTracks(), ...audioPackage.stream.getAudioTracks()];
-  const mixedStream = new MediaStream(tracks);
-  const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')
-    ? 'video/webm;codecs=vp9,opus'
-    : 'video/webm';
-  const recorder = new MediaRecorder(mixedStream, { mimeType });
-  const chunks = [];
-
-  return new Promise((resolve, reject) => {
-    recorder.ondataavailable = (event) => {
-      if (event.data && event.data.size) chunks.push(event.data);
+      computeDuration();
+      renderTimeline();
+      renderInspector();
+      renderPreview(state.currentTime);
     };
-    recorder.onerror = (event) => reject(event.error || new Error('Errore durante la registrazione WEBM.'));
-    recorder.onstop = async () => {
-      try { await audioPackage.audioCtx.close(); } catch (_) {}
-      mixedStream.getTracks().forEach((track) => track.stop());
-      resolve(new Blob(chunks, { type: 'video/webm' }));
+    const onUp = () => {
+      node.removeEventListener('pointermove', onMove);
+      node.removeEventListener('pointerup', onUp);
+      pushHistory();
+      renderAll();
     };
+    node.addEventListener('pointermove', onMove);
+    node.addEventListener('pointerup', onUp);
+  }
 
-    recorder.start(500);
-    audioPackage.start();
-    const start = performance.now();
-    const render = (now) => {
-      const elapsed = (now - start) / 1000;
-      const t = Math.min(total, elapsed);
-      state.currentTime = t;
-      drawFrame(t);
-      updateDurationUi();
-      refs.progressBar.style.width = `${Math.min(100, (t / total) * 100)}%`;
-      if (elapsed < total) {
-        requestAnimationFrame(render);
-      } else {
-        setTimeout(() => recorder.stop(), 180);
+  function selectClip(id, track, doRender = true) {
+    state.selected = { id, track };
+    if (doRender) renderAll(); else renderInspector();
+  }
+
+  function updatePlayhead() {
+    const left = 126 + state.currentTime * state.pps;
+    dom.playhead.style.left = `${left}px`;
+    dom.timeSlider.value = state.currentTime;
+    dom.timeReadout.textContent = `${fmtTime(state.currentTime)} / ${fmtTime(state.duration)}`;
+  }
+
+  function renderInspector() {
+    const found = selectedClip();
+    if (!found) {
+      dom.selectedLabel.textContent = 'Nessun elemento selezionato';
+      dom.inspector.className = 'inspector empty-state';
+      dom.inspector.textContent = 'Seleziona una clip nella timeline per modificarla.';
+      return;
+    }
+    dom.inspector.className = 'inspector';
+    const { clip, track } = found;
+    dom.selectedLabel.textContent = `${track.toUpperCase()} • ${clip.label || clip.text || clip.id}`;
+    let html = `
+      <div class="section">
+        <div class="inline2">
+          ${numberControl('start', 'Inizio', clip.start, 0, 999, .1)}
+          ${numberControl('duration', 'Durata', clip.duration, .2, 999, .1)}
+        </div>
+      </div>`;
+    if (track === 'media') {
+      html += `
+        <div class="section">
+          <div class="inline2">
+            ${selectControl('effect','Filtro', clip.effect || 'none', EFFECTS.map(e=>[e.id,e.name]))}
+            ${selectControl('motion','Movimento', clip.motion || 'none', MOTIONS.map(m=>[m.id,m.name]))}
+          </div>
+          <div class="inline2">
+            ${selectControl('transition','Transizione', clip.transition || 'none', TRANSITIONS.map(t=>[t.id,t.name]))}
+            ${numberControl('transitionDuration','Durata trans.', clip.transitionDuration || .45, 0, 3, .05)}
+          </div>
+          ${rangeControl('opacity','Opacità', clip.opacity ?? 1, 0, 1, .01)}
+        </div>`;
+      if (clip.kind === 'video') {
+        html += `<div class="section"><div class="inline2">${numberControl('trimStart','Taglio inizio', clip.trimStart || 0, 0, 999, .1)}${rangeControl('volume','Volume video', clip.volume ?? 1, 0, 1, .01)}</div></div>`;
       }
-    };
-    requestAnimationFrame(render);
-  });
-}
-
-async function loadFfmpeg() {
-  if (state.ffmpeg.loaded) return state.ffmpeg;
-  if (state.ffmpeg.loadingPromise) return state.ffmpeg.loadingPromise;
-
-  state.ffmpeg.loadingPromise = (async () => {
-    setStatus('Caricamento motore MP4 nel browser...');
-    const [{ FFmpeg }, { fetchFile, toBlobURL }] = await Promise.all([
-      import('https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js'),
-      import('https://unpkg.com/@ffmpeg/util@0.12.1/dist/esm/index.js'),
-    ]);
-    const ffmpeg = new FFmpeg();
-    ffmpeg.on('log', ({ message }) => console.log('[ffmpeg]', message));
-    ffmpeg.on('progress', ({ progress }) => {
-      if (Number.isFinite(progress)) refs.progressBar.style.width = `${Math.min(100, Math.max(0, progress * 100))}%`;
+    }
+    if (track === 'audio') {
+      html += `
+        <div class="section">
+          <div class="inline2">${numberControl('trimStart','Taglio inizio', clip.trimStart || 0, 0, 999, .1)}${rangeControl('volume','Volume', clip.volume ?? 1, 0, 1, .01)}</div>
+          <div class="inline2">${numberControl('fadeIn','Fade in', clip.fadeIn || 0, 0, 5, .1)}${numberControl('fadeOut','Fade out', clip.fadeOut || 0, 0, 5, .1)}</div>
+        </div>`;
+    }
+    if (track === 'text' || track === 'subtitles') {
+      html += `
+        <div class="section">
+          <label class="control">Testo<textarea data-field="text" class="textarea" rows="4">${escapeHtml(clip.text || '')}</textarea></label>
+          <div class="inline2">${rangeControl('x','Posizione X', clip.x ?? .5, 0, 1, .01)}${rangeControl('y','Posizione Y', clip.y ?? .8, 0, 1, .01)}</div>
+          <div class="inline2">${numberControl('size','Grandezza', clip.size || 44, 12, 180, 1)}${selectControl('animation','Animazione', clip.animation || 'none', [['none','Nessuna'],['rise','Rise'],['pop','Pop'],['typewriter','Typewriter'],['karaoke','Karaoke'],['bounce','Bounce'],['slide-left','Slide Left'],['glow','Glow']])}</div>
+          <div class="inline2">${selectControl('align','Allineamento', clip.align || 'center', [['left','Sinistra'],['center','Centro'],['right','Destra']])}${numberControl('weight','Spessore', clip.weight || 800, 100, 900, 100)}</div>
+          <label class="control">Colore <div class="color-row"><input data-field="color" type="text" value="${clip.color || '#ffffff'}"><input data-field="color" type="color" value="${toColor(clip.color || '#ffffff')}"></div></label>
+          <label class="control">Sfondo <input data-field="background" type="text" value="${clip.background || 'rgba(0,0,0,.62)'}"></label>
+          <label class="checkline"><input data-field="shadow" type="checkbox" ${clip.shadow ? 'checked' : ''}/> Ombra testo</label>
+        </div>`;
+    }
+    html += `<div class="section"><button id="duplicateClipBtn" class="btn secondary full">Duplica clip</button><button id="deleteClipBtn" class="btn danger full">Elimina clip</button></div>`;
+    dom.inspector.innerHTML = html;
+    $$('[data-field]', dom.inspector).forEach(input => {
+      input.addEventListener('input', () => updateClipField(input));
+      input.addEventListener('change', () => updateClipField(input));
     });
-    const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm';
-    await ffmpeg.load({
-      coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
-      wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
-    });
-    state.ffmpeg.instance = ffmpeg;
-    state.ffmpeg.fetchFile = fetchFile;
-    state.ffmpeg.toBlobURL = toBlobURL;
-    state.ffmpeg.loaded = true;
-    return state.ffmpeg;
-  })();
-
-  return state.ffmpeg.loadingPromise;
-}
-
-async function convertWebmToMp4(webmBlob) {
-  const ffmpegState = await loadFfmpeg();
-  const ffmpeg = ffmpegState.instance;
-  const fetchFile = ffmpegState.fetchFile;
-  const input = `input-${Date.now()}.webm`;
-  const output = `output-${Date.now()}.mp4`;
-  await ffmpeg.writeFile(input, await fetchFile(webmBlob));
-  setStatus('Conversione MP4 in corso...');
-  refs.progressBar.style.width = '0%';
-
-  const primary = ['-y', '-i', input, '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', '-c:a', 'aac', '-b:a', '128k', output];
-  const fallback = ['-y', '-i', input, '-c:v', 'mpeg4', '-q:v', '5', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', '-c:a', 'aac', '-b:a', '128k', output];
-
-  try {
-    await ffmpeg.exec(primary);
-  } catch (error) {
-    console.warn('Conversione libx264 non riuscita, provo fallback MPEG-4', error);
-    await ffmpeg.exec(fallback);
+    $('#deleteClipBtn')?.addEventListener('click', deleteSelected);
+    $('#duplicateClipBtn')?.addEventListener('click', duplicateSelected);
   }
 
-  const data = await ffmpeg.readFile(output);
-  try { await ffmpeg.deleteFile(input); } catch (_) {}
-  try { await ffmpeg.deleteFile(output); } catch (_) {}
-  return new Blob([data.buffer], { type: 'video/mp4' });
-}
-
-async function exportVideo(format = 'webm') {
-  const total = projectDuration();
-  if (total <= 0) {
-    setStatus('Aggiungi almeno una foto, video, testo o audio.');
-    return;
+  function updateClipField(input) {
+    const found = selectedClip();
+    if (!found) return;
+    const { clip } = found;
+    const field = input.dataset.field;
+    let value;
+    if (input.type === 'checkbox') value = input.checked;
+    else if (input.type === 'number' || input.type === 'range') value = Number(input.value);
+    else value = input.value;
+    if (field === 'duration') value = Math.max(.2, value);
+    if (field === 'start') value = Math.max(0, value);
+    clip[field] = value;
+    computeDuration();
+    renderTimeline();
+    renderPreview(state.currentTime);
   }
-  stopPreview(false);
-  setExportButtons(true);
-  refs.downloadBox.classList.add('hidden');
-  refs.progressBar.style.width = '0%';
-  setStatus(format === 'mp4' ? 'Creo il video base prima della conversione MP4...' : 'Esportazione WEBM in corso...');
 
-  try {
-    const webmBlob = await recordWebmBlob(total);
-    if (format === 'mp4') {
-      const mp4Blob = await convertWebmToMp4(webmBlob);
-      prepareDownload(mp4Blob, 'mp4', 'Il file MP4 è stato generato direttamente nel browser. Su progetti lunghi può richiedere più tempo e memoria.');
-      setStatus('Video MP4 esportato correttamente.');
+  function numberControl(field,label,value,min,max,step){return `<label class="control">${label}<input data-field="${field}" type="number" min="${min}" max="${max}" step="${step}" value="${Number(value ?? 0).toFixed(step < 1 ? 2 : 0)}"></label>`;}
+  function rangeControl(field,label,value,min,max,step){return `<label class="control"><span class="range-value"><span>${label}</span><span>${Number(value ?? 0).toFixed(2)}</span></span><input data-field="${field}" type="range" min="${min}" max="${max}" step="${step}" value="${value ?? 0}"></label>`;}
+  function selectControl(field,label,value,opts){return `<label class="control">${label}<select data-field="${field}">${opts.map(([v,n])=>`<option value="${v}" ${v===value?'selected':''}>${n}</option>`).join('')}</select></label>`;}
+
+  function drawCover(c, img, x, y, w, h, scaleExtra = 1, offX = 0, offY = 0) {
+    const iw = img.videoWidth || img.naturalWidth || img.width || 1;
+    const ih = img.videoHeight || img.naturalHeight || img.height || 1;
+    const scale = Math.max(w / iw, h / ih) * scaleExtra;
+    const dw = iw * scale;
+    const dh = ih * scale;
+    c.drawImage(img, x + (w-dw)/2 + offX, y + (h-dh)/2 + offY, dw, dh);
+  }
+
+  function getMediaElement(asset) {
+    if (!asset) return null;
+    if (mediaCache.has(asset.id)) return mediaCache.get(asset.id);
+    let el;
+    if (asset.type === 'image') {
+      el = new Image();
+      el.src = asset.url;
+    } else if (asset.type === 'video') {
+      el = document.createElement('video');
+      el.src = asset.url;
+      el.muted = true;
+      el.playsInline = true;
+      el.preload = 'auto';
+    }
+    mediaCache.set(asset.id, el);
+    return el;
+  }
+
+  function renderPreview(t = state.currentTime) {
+    const w = dom.canvas.width, h = dom.canvas.height;
+    ctx.save();
+    ctx.filter = 'none';
+    ctx.globalAlpha = 1;
+    const grd = ctx.createLinearGradient(0,0,w,h);
+    grd.addColorStop(0,'#050713'); grd.addColorStop(1,'#11162f');
+    ctx.fillStyle = grd; ctx.fillRect(0,0,w,h);
+    const active = activeClips('media', t).at(-1);
+    if (active) drawMediaClip(active, t, w, h);
+    else drawEmptyPreview(w,h);
+    for (const text of activeClips('text', t)) drawTextClip(text, t, w, h);
+    for (const sub of activeClips('subtitles', t)) drawTextClip(sub, t, w, h, true);
+    ctx.restore();
+    updatePlayhead();
+  }
+
+  function drawEmptyPreview(w,h) {
+    ctx.fillStyle = 'rgba(255,255,255,.07)';
+    roundRect(ctx, w*.12, h*.38, w*.76, h*.2, 40); ctx.fill();
+    ctx.fillStyle = '#fff'; ctx.font = `800 ${Math.round(w*.05)}px Inter, Arial`; ctx.textAlign = 'center';
+    ctx.fillText('Carica foto, video e audio', w/2, h*.48);
+    ctx.fillStyle = 'rgba(255,255,255,.65)'; ctx.font = `500 ${Math.round(w*.026)}px Inter, Arial`;
+    ctx.fillText('Poi modifica tutto dalla timeline', w/2, h*.53);
+  }
+
+  function drawMediaClip(clip, t, w, h) {
+    const asset = getAsset(clip.assetId);
+    const el = getMediaElement(asset);
+    if (!el) return;
+    const local = clamp((t - clip.start) / clip.duration, 0, 1);
+    const transitionAmount = getTransitionAmount(clip, t);
+    const effect = EFFECTS.find(e => e.id === clip.effect) || EFFECTS[0];
+    ctx.save();
+    ctx.globalAlpha = (clip.opacity ?? 1) * transitionAmount.alpha;
+    ctx.filter = effect.filter || 'none';
+    applyTransitionTransform(clip.transition, transitionAmount.phase, transitionAmount.dir, w, h);
+    const motion = motionTransform(clip.motion, local, w, h);
+    ctx.translate(w/2 + motion.x, h/2 + motion.y);
+    ctx.rotate(motion.rotate);
+    ctx.translate(-w/2, -h/2);
+    if (asset.type === 'video') {
+      try {
+        const target = Math.min((clip.trimStart || 0) + (t - clip.start), Math.max(0, (asset.duration || 0) - .05));
+        if (Math.abs((el.currentTime || 0) - target) > .18 && el.readyState >= 1) el.currentTime = target;
+      } catch (_) {}
+    }
+    if (effect.overlay === 'blurFrame' && el.complete !== false) {
+      ctx.save(); ctx.filter = 'blur(34px) brightness(.72) saturate(1.2)'; drawCover(ctx, el, -40, -40, w+80, h+80, 1.12); ctx.restore();
+    }
+    if (el.complete === false || (asset.type === 'video' && el.readyState < 2)) {
+      drawPlaceholder(w,h, asset.name);
     } else {
-      prepareDownload(webmBlob, 'webm', 'Il file WEBM è stato generato direttamente dal browser.');
-      setStatus('Video WEBM esportato correttamente.');
+      drawCover(ctx, el, 0, 0, w, h, motion.scale, motion.offX, motion.offY);
     }
-  } catch (error) {
-    console.error(error);
-    setStatus(`Errore esportazione: ${error.message || error}`);
-  } finally {
-    setExportButtons(false);
-    updateDurationUi();
+    ctx.filter = 'none';
+    drawOverlay(effect.overlay, local, w, h);
+    ctx.restore();
   }
-}
 
-function resetProject() {
-  if (!confirm('Vuoi cancellare tutto il progetto?')) return;
-  stopPreview(false);
-  state.media.forEach((item) => item.url && URL.revokeObjectURL(item.url));
-  if (state.audio.url) URL.revokeObjectURL(state.audio.url);
-  state.media = [];
-  state.texts = [];
-  state.selected = null;
-  state.currentTime = 0;
-  state.audio = { url: null, file: null, fileName: '', duration: 0, trimStart: 0, trimEnd: 0, timelineStart: 0, buffer: null, element: null };
-  refs.audioInfo.textContent = 'Nessun audio caricato.';
-  refs.downloadBox.classList.add('hidden');
-  drawWaveform();
-  renderAll();
-  setStatus('Progetto pulito.');
-}
-
-function bindEvents() {
-  refs.imageInput.addEventListener('change', handleImages);
-  refs.videoInput.addEventListener('change', handleVideos);
-  refs.audioInput.addEventListener('change', handleAudio);
-  refs.formatSelect.addEventListener('change', updateCanvasSize);
-  refs.timelineScale.addEventListener('input', renderTimeline);
-  refs.scrubRange.addEventListener('input', updatePlayheadFromScrub);
-  refs.previewBtn.addEventListener('click', startPreview);
-  refs.stopPreviewBtn.addEventListener('click', () => stopPreview(true));
-  refs.exportBtn.addEventListener('click', () => exportVideo('webm'));
-  refs.exportMp4Btn.addEventListener('click', () => exportVideo('mp4'));
-  refs.resetBtn.addEventListener('click', resetProject);
-  refs.fitMediaToAudioBtn.addEventListener('click', fitMediaToAudio);
-  refs.compactMediaBtn.addEventListener('click', compactMedia);
-  refs.addTextBtn.addEventListener('click', () => addTextClip(state.currentTime));
-  refs.applyFxSelectedBtn.addEventListener('click', applyFxSelected);
-  refs.applyFxAllBtn.addEventListener('click', applyFxAll);
-  refs.previewAudioBtn.addEventListener('click', previewAudioOnly);
-  refs.stopAudioBtn.addEventListener('click', stopAudioPreview);
-  refs.audioVolume.addEventListener('input', () => {
-    if (state.audio.element) state.audio.element.volume = Number(refs.audioVolume.value || 0.85);
-    renderInspector();
-  });
-
-  window.addEventListener('beforeinstallprompt', (event) => {
-    event.preventDefault();
-    state.deferredInstallPrompt = event;
-    refs.installBtn.classList.remove('hidden');
-  });
-  refs.installBtn.addEventListener('click', async () => {
-    if (!state.deferredInstallPrompt) return;
-    state.deferredInstallPrompt.prompt();
-    await state.deferredInstallPrompt.userChoice;
-    state.deferredInstallPrompt = null;
-    refs.installBtn.classList.add('hidden');
-  });
-}
-
-function initServiceWorker() {
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('service-worker.js').catch(() => {});
+  function getTransitionAmount(clip, t) {
+    const d = Math.max(0.001, clip.transitionDuration || .45);
+    const local = t - clip.start;
+    const endLocal = clip.duration - local;
+    if ((clip.transition || 'none') === 'none') return { alpha:1, phase:1, dir:0 };
+    if (local < d) return { alpha: clamp(local / d, 0, 1), phase: clamp(local / d, 0, 1), dir: -1 };
+    if (endLocal < d) return { alpha: clamp(endLocal / d, 0, 1), phase: clamp(endLocal / d, 0, 1), dir: 1 };
+    return { alpha:1, phase:1, dir:0 };
   }
-}
 
-function init() {
-  bindEvents();
-  updateCanvasSize();
-  drawWaveform();
-  renderAll();
-  initServiceWorker();
-}
+  function applyTransitionTransform(kind, phase, dir, w, h) {
+    if (!dir || kind === 'fade' || kind === 'crossfade' || kind === 'none') return;
+    const inv = 1 - phase;
+    if (kind === 'slide-left') ctx.translate(dir * inv * -w, 0);
+    if (kind === 'slide-right') ctx.translate(dir * inv * w, 0);
+    if (kind === 'slide-up') ctx.translate(0, dir * inv * -h);
+    if (kind === 'slide-down') ctx.translate(0, dir * inv * h);
+    if (kind === 'zoom') { ctx.translate(w/2,h/2); ctx.scale(1 + inv * .28, 1 + inv * .28); ctx.translate(-w/2,-h/2); ctx.filter = `${ctx.filter} blur(${inv*4}px)`; }
+    if (kind === 'spin' || kind === 'swirl') { ctx.translate(w/2,h/2); ctx.rotate(inv * dir * (kind === 'spin' ? .6 : .22)); ctx.scale(1 + inv*.16, 1 + inv*.16); ctx.translate(-w/2,-h/2); }
+    if (kind === 'pixel') ctx.filter = `${ctx.filter} contrast(${1+inv*.6}) saturate(${1+inv*.4})`;
+  }
 
-init();
+  function motionTransform(kind, p, w, h) {
+    const ease = p < .5 ? 2*p*p : 1 - Math.pow(-2*p+2,2)/2;
+    const m = { scale:1, x:0, y:0, offX:0, offY:0, rotate:0 };
+    if (kind === 'kenburns-in') m.scale = 1 + ease * .13;
+    if (kind === 'kenburns-out') m.scale = 1.13 - ease * .13;
+    if (kind === 'pan-left') m.offX = (ease - .5) * -w * .08, m.scale = 1.08;
+    if (kind === 'pan-right') m.offX = (ease - .5) * w * .08, m.scale = 1.08;
+    if (kind === 'pan-up') m.offY = (ease - .5) * -h * .08, m.scale = 1.08;
+    if (kind === 'pan-down') m.offY = (ease - .5) * h * .08, m.scale = 1.08;
+    if (kind === 'rotate-slow') { m.rotate = (ease - .5) * .035; m.scale = 1.06; }
+    if (kind === 'pulse') m.scale = 1 + Math.sin(p * Math.PI * 8) * .018;
+    if (kind === 'float') { m.y = Math.sin(p * Math.PI * 2) * h * .012; m.scale = 1.04; }
+    return m;
+  }
+
+  function drawOverlay(type, p, w, h) {
+    if (!type) return;
+    if (type === 'vignette') {
+      const g = ctx.createRadialGradient(w/2,h/2,Math.min(w,h)*.12,w/2,h/2,Math.max(w,h)*.62);
+      g.addColorStop(0,'rgba(0,0,0,0)'); g.addColorStop(1,'rgba(0,0,0,.58)'); ctx.fillStyle = g; ctx.fillRect(0,0,w,h);
+    }
+    if (type === 'grain' || type === 'vhs') {
+      ctx.globalAlpha = .08; ctx.fillStyle = '#fff';
+      for (let i=0;i<450;i++) ctx.fillRect(Math.random()*w, Math.random()*h, Math.random()*3+1, Math.random()*3+1);
+      ctx.globalAlpha = 1;
+    }
+    if (type === 'scanlines' || type === 'vhs') {
+      ctx.globalAlpha = .12; ctx.fillStyle = '#000'; for (let y=0;y<h;y+=8) ctx.fillRect(0,y,w,2); ctx.globalAlpha = 1;
+    }
+    if (type === 'glitch') {
+      ctx.globalAlpha = .22; ctx.fillStyle = '#00e0ff'; ctx.fillRect(Math.random()*w*.1, Math.random()*h, w, 8+Math.random()*20); ctx.fillStyle = '#ff3f8f'; ctx.fillRect(-Math.random()*w*.1, Math.random()*h, w, 6+Math.random()*16); ctx.globalAlpha = 1;
+    }
+    if (type === 'neon') {
+      const g = ctx.createLinearGradient(0,0,w,h); g.addColorStop(0,'rgba(124,92,255,.18)'); g.addColorStop(1,'rgba(0,224,255,.16)'); ctx.fillStyle = g; ctx.fillRect(0,0,w,h);
+    }
+    if (type === 'glow') {
+      const g = ctx.createRadialGradient(w*.5,h*.35,0,w*.5,h*.35,w*.55); g.addColorStop(0,'rgba(255,255,255,.12)'); g.addColorStop(1,'rgba(255,255,255,0)'); ctx.fillStyle = g; ctx.fillRect(0,0,w,h);
+    }
+    if (type === 'newsFrame') {
+      ctx.fillStyle = 'rgba(210,0,42,.8)'; ctx.fillRect(0,h*.88,w,h*.12); ctx.fillStyle = '#fff'; ctx.font = `900 ${Math.round(w*.045)}px Arial`; ctx.textAlign='left'; ctx.fillText('BREAKING', w*.05, h*.955);
+    }
+  }
+
+  function drawPlaceholder(w,h,name) {
+    ctx.fillStyle = 'rgba(255,255,255,.07)'; ctx.fillRect(0,0,w,h);
+    ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.font = `700 ${Math.round(w*.03)}px Arial`; ctx.textAlign = 'center'; ctx.fillText(name || 'Caricamento...', w/2, h/2);
+  }
+
+  function drawTextClip(clip, t, w, h, isSubtitle=false) {
+    const local = clamp((t - clip.start) / clip.duration, 0, 1);
+    const x = (clip.x ?? .5) * w;
+    const y = (clip.y ?? .8) * h;
+    const size = clip.size || (isSubtitle ? 42 : 64);
+    const font = `${clip.weight || 800} ${size}px ${clip.font || 'Inter'}, Arial, sans-serif`;
+    const lines = wrapText(ctx, clip.text || '', Math.min(w*.88, w - 80), font);
+    const lineH = size * 1.18;
+    let alpha = 1, tx = x, ty = y, scale = 1;
+    if (clip.animation === 'rise') { alpha = smooth(local); ty += (1-smooth(local))*50; }
+    if (clip.animation === 'pop') { alpha = smooth(local); scale = .88 + smooth(local) * .12; }
+    if (clip.animation === 'bounce') { scale = 1 + Math.sin(local*Math.PI*4)*.035*(1-local); }
+    if (clip.animation === 'slide-left') { tx += (1-smooth(local))*w*.18; alpha = smooth(local); }
+    if (clip.animation === 'glow') { alpha = .85 + Math.sin(local*Math.PI*4)*.15; }
+    const visibleText = clip.animation === 'typewriter' ? clip.text.slice(0, Math.ceil((clip.text.length || 0) * local)) : clip.text;
+    const drawLines = clip.animation === 'typewriter' ? wrapText(ctx, visibleText, Math.min(w*.88,w-80), font) : lines;
+    ctx.save(); ctx.globalAlpha = alpha; ctx.translate(tx,ty); ctx.scale(scale,scale); ctx.translate(-tx,-ty); ctx.font = font; ctx.textAlign = clip.align || 'center'; ctx.textBaseline = 'middle';
+    const textW = Math.max(...drawLines.map(l => ctx.measureText(l).width), 1);
+    const boxW = Math.min(w*.92, textW + size*.9);
+    const boxH = drawLines.length * lineH + size*.45;
+    let bx = x - boxW/2; if (clip.align === 'left') bx = x; if (clip.align === 'right') bx = x - boxW;
+    const by = y - boxH/2;
+    if (clip.background && clip.background !== 'rgba(0,0,0,0)') { ctx.fillStyle = clip.background; roundRect(ctx,bx,by,boxW,boxH,Math.max(14,size*.22)); ctx.fill(); }
+    if (clip.shadow) { ctx.shadowColor='rgba(0,0,0,.72)'; ctx.shadowBlur=18; ctx.shadowOffsetY=6; }
+    ctx.fillStyle = clip.color || '#fff';
+    drawLines.forEach((line,i) => ctx.fillText(line, x, y + (i-(drawLines.length-1)/2)*lineH));
+    if (clip.animation === 'karaoke') {
+      ctx.save(); ctx.beginPath(); ctx.rect(bx, by, boxW * local, boxH); ctx.clip(); ctx.fillStyle = '#00e0ff'; drawLines.forEach((line,i) => ctx.fillText(line, x, y + (i-(drawLines.length-1)/2)*lineH)); ctx.restore();
+    }
+    ctx.restore();
+  }
+
+  function wrapText(c, text, maxWidth, font) {
+    c.font = font;
+    const words = String(text || '').split(/\s+/);
+    const lines = [];
+    let line = '';
+    for (const word of words) {
+      const test = line ? `${line} ${word}` : word;
+      if (c.measureText(test).width > maxWidth && line) { lines.push(line); line = word; }
+      else line = test;
+    }
+    if (line) lines.push(line);
+    return lines.length ? lines : [''];
+  }
+
+  function roundRect(c,x,y,w,h,r) {
+    const rr = Math.min(r, w/2, h/2);
+    c.beginPath(); c.moveTo(x+rr,y); c.arcTo(x+w,y,x+w,y+h,rr); c.arcTo(x+w,y+h,x,y+h,rr); c.arcTo(x,y+h,x,y,rr); c.arcTo(x,y,x+w,y,rr); c.closePath();
+  }
+  const smooth = x => x*x*(3-2*x);
+  function escapeHtml(str='') { return String(str).replace(/[&<>'"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[m])); }
+  function toColor(v) { return /^#[0-9a-f]{6}$/i.test(v) ? v : '#ffffff'; }
+
+  function startPlayback() {
+    if (state.playing) return;
+    state.playing = true;
+    state.playStartClock = performance.now();
+    state.playStartTime = state.currentTime;
+    dom.playBtn.textContent = '⏸';
+    loopPlayback();
+  }
+  function stopPlayback() {
+    state.playing = false;
+    dom.playBtn.textContent = '▶';
+    if (animationId) cancelAnimationFrame(animationId);
+    stopAllAudio();
+  }
+  function loopPlayback() {
+    if (!state.playing) return;
+    const elapsed = (performance.now() - state.playStartClock) / 1000;
+    state.currentTime = state.playStartTime + elapsed;
+    if (state.currentTime >= state.duration) { state.currentTime = state.duration; renderPreview(state.currentTime); stopPlayback(); return; }
+    syncAudioForTime(state.currentTime);
+    renderPreview(state.currentTime);
+    animationId = requestAnimationFrame(loopPlayback);
+  }
+
+  function getAudioElement(asset) {
+    if (!asset) return null;
+    if (audioPlayback.has(asset.id)) return audioPlayback.get(asset.id);
+    const el = document.createElement('audio');
+    el.src = asset.url; el.preload = 'auto'; el.crossOrigin = 'anonymous';
+    audioPlayback.set(asset.id, el);
+    return el;
+  }
+  function syncAudioForTime(t) {
+    for (const clip of state.clips.audio) {
+      const asset = getAsset(clip.assetId); const el = getAudioElement(asset); if (!el) continue;
+      const active = t >= clip.start && t <= clip.start + clip.duration;
+      if (active) {
+        const target = (clip.trimStart || 0) + (t - clip.start);
+        if (Math.abs((el.currentTime || 0) - target) > .22) { try { el.currentTime = target; } catch (_) {} }
+        el.volume = clipVolumeAt(clip, t);
+        if (el.paused) el.play().catch(()=>{});
+      } else if (!el.paused) el.pause();
+    }
+  }
+  function clipVolumeAt(clip,t) {
+    const base = clip.volume ?? 1;
+    const local = t - clip.start;
+    const end = clip.start + clip.duration - t;
+    let v = base;
+    if (clip.fadeIn) v *= clamp(local / clip.fadeIn, 0, 1);
+    if (clip.fadeOut) v *= clamp(end / clip.fadeOut, 0, 1);
+    return clamp(v,0,1);
+  }
+  function stopAllAudio(){ audioPlayback.forEach(a => { a.pause(); try{a.currentTime=0;}catch(_){}}); }
+
+  async function exportWebM(returnBlob = false) {
+    if (!state.duration) return alert('Aggiungi almeno una clip prima di esportare.');
+    stopPlayback();
+    showLoading('Esportazione WEBM', 'Preparazione...');
+    const fps = state.fps;
+    const stream = dom.canvas.captureStream(fps);
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const dest = audioCtx.createMediaStreamDestination();
+    const audioEls = [];
+    for (const clip of state.clips.audio) {
+      const asset = getAsset(clip.assetId); if (!asset) continue;
+      const el = document.createElement('audio'); el.src = asset.url; el.preload = 'auto'; el.crossOrigin = 'anonymous';
+      const src = audioCtx.createMediaElementSource(el);
+      const gain = audioCtx.createGain();
+      src.connect(gain).connect(dest);
+      audioEls.push({ el, clip, gain });
+    }
+    dest.stream.getAudioTracks().forEach(track => stream.addTrack(track));
+    const mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus') ? 'video/webm;codecs=vp9,opus' : 'video/webm';
+    const recorder = new MediaRecorder(stream, { mimeType:mime, videoBitsPerSecond: 7_000_000 });
+    const chunks = [];
+    recorder.ondataavailable = e => e.data.size && chunks.push(e.data);
+    const done = new Promise(resolve => recorder.onstop = () => resolve(new Blob(chunks, { type:'video/webm' })));
+    await audioCtx.resume();
+    recorder.start(250);
+    const start = performance.now();
+    let lastSecond = -1;
+    await new Promise(resolve => {
+      const step = () => {
+        const t = Math.min(state.duration, (performance.now() - start) / 1000);
+        state.currentTime = t;
+        for (const item of audioEls) {
+          const { el, clip, gain } = item;
+          const active = t >= clip.start && t <= clip.start + clip.duration;
+          if (active) {
+            const target = (clip.trimStart || 0) + (t - clip.start);
+            if (Math.abs((el.currentTime || 0) - target) > .22) { try { el.currentTime = target; } catch(_){} }
+            gain.gain.value = clipVolumeAt(clip,t);
+            if (el.paused) el.play().catch(()=>{});
+          } else if (!el.paused) el.pause();
+        }
+        renderPreview(t);
+        const p = Math.round((t / state.duration) * 100);
+        if (Math.floor(t) !== lastSecond) { lastSecond = Math.floor(t); updateLoading(p, `Rendering ${fmtTime(t)} / ${fmtTime(state.duration)}`); }
+        if (t >= state.duration) resolve(); else requestAnimationFrame(step);
+      };
+      requestAnimationFrame(step);
+    });
+    recorder.stop();
+    audioEls.forEach(({el}) => el.pause());
+    await audioCtx.close().catch(()=>{});
+    const blob = await done;
+    hideLoading();
+    if (returnBlob) return blob;
+    downloadBlob(blob, `${safeFileName(state.projectName)}.webm`);
+    return blob;
+  }
+
+  async function exportMP4() {
+    try {
+      const webm = await exportWebM(true);
+      if (!webm) return;
+      showLoading('Conversione MP4', 'Caricamento FFmpeg.wasm...');
+      const { FFmpeg } = await import('https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js');
+      const { fetchFile, toBlobURL } = await import('https://unpkg.com/@ffmpeg/util@0.12.1/dist/esm/index.js');
+      const ffmpeg = new FFmpeg();
+      ffmpeg.on('progress', ({ progress, time }) => updateLoading(Math.round((progress || 0) * 100), `Conversione in corso ${Math.round((time || 0)/1000000)}s`));
+      const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.10/dist/esm';
+      await ffmpeg.load({
+        coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
+        wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
+      });
+      await ffmpeg.writeFile('input.webm', await fetchFile(webm));
+      updateLoading(50, 'Compressione H.264...');
+      await ffmpeg.exec(['-i','input.webm','-c:v','libx264','-preset','veryfast','-pix_fmt','yuv420p','-c:a','aac','-b:a','192k','output.mp4']);
+      const data = await ffmpeg.readFile('output.mp4');
+      const mp4 = new Blob([data.buffer], { type:'video/mp4' });
+      downloadBlob(mp4, `${safeFileName(state.projectName)}.mp4`);
+      hideLoading();
+    } catch (err) {
+      hideLoading();
+      console.error(err);
+      alert('Conversione MP4 non riuscita. Il browser potrebbe bloccare FFmpeg.wasm o la memoria potrebbe non bastare. Puoi comunque esportare in WEBM.');
+    }
+  }
+
+  async function generateAiSubtitles() {
+    const audioClip = state.clips.audio[0];
+    if (!audioClip) return alert('Carica prima una traccia audio.');
+    const asset = getAsset(audioClip.assetId);
+    if (!asset?.file) return alert('Per generare sottotitoli AI serve il file audio caricato in questa sessione.');
+    const apiKey = dom.apiKeyInput.value.trim();
+    const proxyUrl = dom.proxyUrlInput.value.trim();
+    if (!apiKey && !proxyUrl) return alert('Inserisci la tua chiave API OpenAI oppure un proxy sicuro.');
+    if (dom.saveKeyCheck.checked && apiKey) localStorage.setItem('videomaker_openai_key', apiKey); else localStorage.removeItem('videomaker_openai_key');
+    showLoading('Sottotitoli AI', 'Invio audio per trascrizione...');
+    try {
+      const form = new FormData();
+      form.append('file', asset.file, asset.name || 'audio.mp3');
+      form.append('model', dom.transcribeModel.value || 'gpt-4o-mini-transcribe');
+      form.append('response_format', 'verbose_json');
+      form.append('timestamp_granularities[]', 'segment');
+      form.append('temperature', '0');
+      let res;
+      if (proxyUrl) {
+        res = await fetch(proxyUrl, { method:'POST', body: form });
+      } else {
+        res = await fetch('https://api.openai.com/v1/audio/transcriptions', { method:'POST', headers:{ Authorization:`Bearer ${apiKey}` }, body: form });
+      }
+      if (!res.ok) throw new Error(await res.text());
+      const data = await res.json();
+      pushHistory();
+      state.clips.subtitles.length = 0;
+      const segments = data.segments || data.words || [];
+      if (segments.length) {
+        for (const seg of segments) {
+          const text = (seg.text || seg.word || '').trim();
+          if (!text) continue;
+          const start = audioClip.start + Math.max(0, (seg.start || 0) - (audioClip.trimStart || 0));
+          const end = audioClip.start + Math.max(start + .6, (seg.end || (seg.start || 0) + 2) - (audioClip.trimStart || 0));
+          addSubtitleClip(text, start, clamp(end - start, .5, 8));
+        }
+      } else if (data.text) {
+        createDraftSubtitles(data.text);
+      }
+      hideLoading();
+      renderAll();
+    } catch (err) {
+      hideLoading();
+      console.error(err);
+      alert('Non sono riuscito a generare i sottotitoli AI. Controlla chiave API, proxy, rete o formato audio.');
+    }
+  }
+
+  function createDraftSubtitles(text = dom.subtitleDraftText.value) {
+    const audioClip = state.clips.audio[0];
+    const startBase = audioClip?.start || 0;
+    const total = audioClip?.duration || Math.max(8, state.duration || 20);
+    const chunks = splitCaptionText(text || 'Questo è un esempio di sottotitolo automatico creato dalla webapp.', 42);
+    const step = total / chunks.length;
+    state.clips.subtitles.length = 0;
+    chunks.forEach((chunk, i) => addSubtitleClip(chunk, startBase + i * step, Math.max(1.1, step * .92)));
+  }
+  function splitCaptionText(text, maxChars) {
+    const words = String(text).replace(/\s+/g,' ').trim().split(' ');
+    const chunks = []; let line = '';
+    for (const w of words) {
+      if ((line + ' ' + w).trim().length > maxChars && line) { chunks.push(line); line = w; }
+      else line = (line + ' ' + w).trim();
+    }
+    if (line) chunks.push(line);
+    return chunks.length ? chunks : [''];
+  }
+
+  function parseSRT(srt) {
+    const blocks = srt.replace(/\r/g,'').split(/\n\n+/);
+    const out = [];
+    const rx = /(\d{2}:\d{2}:\d{2},\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2},\d{3})/;
+    for (const block of blocks) {
+      const lines = block.split('\n').filter(Boolean);
+      const timeLine = lines.find(l => rx.test(l));
+      if (!timeLine) continue;
+      const m = timeLine.match(rx);
+      const text = lines.slice(lines.indexOf(timeLine)+1).join(' ');
+      out.push({ start:srtTime(m[1]), end:srtTime(m[2]), text });
+    }
+    return out;
+  }
+  function srtTime(v) { const [h,m,rest] = v.split(':'); const [s,ms] = rest.split(','); return Number(h)*3600 + Number(m)*60 + Number(s) + Number(ms)/1000; }
+
+  function fitPhotosToAudio() {
+    const audioEnd = Math.max(...state.clips.audio.map(c => c.start + c.duration), 0);
+    const photos = state.clips.media.filter(c => c.kind === 'image' || c.kind === 'video');
+    if (!audioEnd || !photos.length) return alert('Carica almeno una traccia audio e alcune foto/video.');
+    pushHistory();
+    const each = audioEnd / photos.length;
+    photos.forEach((c,i) => { c.start = i * each; c.duration = Math.max(.4, each); });
+    renderAll();
+  }
+
+  function autoBeatCut() {
+    const audioEnd = Math.max(...state.clips.audio.map(c => c.start + c.duration), 0) || 15;
+    const clips = state.clips.media;
+    if (!clips.length) return alert('Aggiungi prima foto o video.');
+    pushHistory();
+    const pattern = [1.2, 1.2, .8, 1.8, 1.0, 1.0, 2.0];
+    let t = 0;
+    clips.forEach((c,i) => { c.start = t; c.duration = pattern[i % pattern.length]; c.motion = ['kenburns-in','pan-left','pan-right','pulse','float'][i%5]; c.transition = ['fade','slide-left','zoom','flash'][i%4]; t += c.duration; });
+    if (t < audioEnd) clips[clips.length-1].duration += audioEnd - t;
+    renderAll();
+  }
+
+  function deleteSelected() {
+    const found = selectedClip(); if (!found) return;
+    pushHistory();
+    state.clips[found.track] = state.clips[found.track].filter(c => c.id !== found.clip.id);
+    state.selected = null; renderAll();
+  }
+  function duplicateSelected() {
+    const found = selectedClip(); if (!found) return;
+    pushHistory();
+    const copy = JSON.parse(JSON.stringify(found.clip)); copy.id = uid('clip'); copy.start += .3; copy.label = `${copy.label || copy.kind} copia`;
+    state.clips[found.track].push(copy); selectClip(copy.id, found.track); renderAll();
+  }
+
+  function undo() {
+    if (state.history.length < 2) return;
+    const current = state.history.pop(); state.future.push(current);
+    restoreProject(JSON.parse(state.history[state.history.length-1]));
+  }
+  function redo() {
+    if (!state.future.length) return;
+    const snap = state.future.pop(); state.history.push(snap); restoreProject(JSON.parse(snap));
+  }
+
+  function saveProjectFile() {
+    const data = new Blob([JSON.stringify(serializeProject(), null, 2)], { type:'application/json' });
+    downloadBlob(data, `${safeFileName(state.projectName)}-project.json`);
+  }
+  async function loadProjectFile(file) {
+    const text = await readFileText(file);
+    restoreProject(JSON.parse(text));
+    pushHistory();
+  }
+  function saveAutosave() {
+    try { localStorage.setItem('videomaker_autosave_v5', JSON.stringify(serializeProject())); } catch(_) {}
+  }
+  function loadAutosave() {
+    const raw = localStorage.getItem('videomaker_autosave_v5');
+    if (!raw) return;
+    try { const data = JSON.parse(raw); if (data?.clips) restoreProject(data); } catch(_) {}
+  }
+
+  function downloadBlob(blob, name) {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(a.href), 10000);
+  }
+  function safeFileName(name) { return String(name || 'videomaker-studio-ai').toLowerCase().replace(/[^a-z0-9\-_]+/gi,'-').replace(/-+/g,'-').replace(/^-|-$/g,'') || 'videomaker-studio-ai'; }
+  function showLoading(title,text) { dom.loadingTitle.textContent = title; dom.loadingText.textContent = text || ''; dom.loadingOverlay.classList.remove('hidden'); }
+  function updateLoading(percent,text) { dom.loadingText.textContent = `${percent}% • ${text || ''}`; }
+  function hideLoading() { dom.loadingOverlay.classList.add('hidden'); }
+
+  function initEvents() {
+    dom.mediaInput.addEventListener('change', e => addFiles(e.target.files));
+    dom.dropZone.addEventListener('dragover', e => { e.preventDefault(); dom.dropZone.classList.add('drag'); });
+    dom.dropZone.addEventListener('dragleave', () => dom.dropZone.classList.remove('drag'));
+    dom.dropZone.addEventListener('drop', e => { e.preventDefault(); dom.dropZone.classList.remove('drag'); addFiles(e.dataTransfer.files); });
+    $$('.tab').forEach(tab => tab.addEventListener('click', () => {
+      $$('.tab').forEach(t => t.classList.remove('active')); tab.classList.add('active');
+      $$('.panel-tab').forEach(p => p.classList.remove('active')); $(`#${tab.dataset.tab}Tab`).classList.add('active');
+    }));
+    $('#addTextBtn').addEventListener('click', addTextClip);
+    $('#addTrackTextBtn').addEventListener('click', addTextClip);
+    $('#addSubtitleBtn').addEventListener('click', () => { pushHistory(); addSubtitleClip(); renderAll(); });
+    $('#addTrackSubtitleBtn').addEventListener('click', () => { pushHistory(); addSubtitleClip(); renderAll(); });
+    $('#fitPhotosBtn').addEventListener('click', fitPhotosToAudio);
+    $('#autoBeatBtn').addEventListener('click', autoBeatCut);
+    $('#deleteSelectedBtn').addEventListener('click', deleteSelected);
+    dom.formatSelect.addEventListener('change', e => { pushHistory(); state.format = e.target.value; applyFormat(); saveAutosave(); });
+    dom.fpsSelect.addEventListener('change', e => { state.fps = Number(e.target.value); saveAutosave(); });
+    dom.playBtn.addEventListener('click', () => state.playing ? stopPlayback() : startPlayback());
+    dom.timeSlider.addEventListener('input', e => { stopPlayback(); state.currentTime = Number(e.target.value); renderPreview(state.currentTime); });
+    dom.timelineScroll.addEventListener('click', e => {
+      if (!e.target.classList.contains('track-lane') && e.target !== dom.ruler) return;
+      const rect = e.target.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      state.currentTime = clamp(x / state.pps, 0, state.duration || 999);
+      renderPreview(state.currentTime);
+    });
+    dom.zoomSlider.addEventListener('input', e => { state.pps = Number(e.target.value); renderTimeline(); });
+    $('#zoomOutBtn').addEventListener('click', () => { state.pps = clamp(state.pps - 10,45,180); dom.zoomSlider.value = state.pps; renderTimeline(); });
+    $('#zoomInBtn').addEventListener('click', () => { state.pps = clamp(state.pps + 10,45,180); dom.zoomSlider.value = state.pps; renderTimeline(); });
+    dom.snapBtn.addEventListener('click', () => { state.snap = !state.snap; dom.snapBtn.classList.toggle('active', state.snap); });
+    $('#exportWebmBtn').addEventListener('click', () => exportWebM(false));
+    $('#exportMp4Btn').addEventListener('click', exportMP4);
+    $('#saveProjectBtn').addEventListener('click', saveProjectFile);
+    $('#loadProjectInput').addEventListener('change', e => e.target.files[0] && loadProjectFile(e.target.files[0]));
+    $('#generateAiSubtitlesBtn').addEventListener('click', generateAiSubtitles);
+    $('#makeDraftSubtitlesBtn').addEventListener('click', () => { pushHistory(); createDraftSubtitles(); renderAll(); });
+    dom.srtInput.addEventListener('change', async e => {
+      const file = e.target.files[0]; if (!file) return;
+      const text = await readFileText(file); const cues = parseSRT(text);
+      pushHistory(); state.clips.subtitles.length = 0; cues.forEach(c => addSubtitleClip(c.text, c.start, c.end - c.start)); renderAll();
+    });
+    $('#undoBtn').addEventListener('click', undo);
+    $('#redoBtn').addEventListener('click', redo);
+    $('#previewFitBtn').addEventListener('click', updateSafeArea);
+    window.addEventListener('resize', updateSafeArea);
+    document.addEventListener('keydown', e => {
+      if (e.target.matches('input,textarea,select')) return;
+      if (e.code === 'Space') { e.preventDefault(); state.playing ? stopPlayback() : startPlayback(); }
+      if (e.key === 'Delete' || e.key === 'Backspace') deleteSelected();
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); undo(); }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); }
+    });
+  }
+
+  function seedDemo() {
+    if (state.clips.media.length) return;
+    addTextClip();
+    const t = state.clips.text[0];
+    t.text = 'VideoMaker Studio AI'; t.start = 0; t.duration = 3.2; t.y = .42; t.size = 74; t.animation = 'glow'; t.background = 'rgba(124,92,255,.28)';
+    addSubtitleClip('Carica i tuoi file e crea un video professionale', .4, 2.8);
+  }
+
+  function init() {
+    initEvents();
+    renderPresets();
+    const savedKey = localStorage.getItem('videomaker_openai_key');
+    if (savedKey) { dom.apiKeyInput.value = savedKey; dom.saveKeyCheck.checked = true; }
+    loadAutosave();
+    seedDemo();
+    applyFormat();
+    pushHistory();
+    renderAll();
+    if ('serviceWorker' in navigator) navigator.serviceWorker.register('service-worker.js').catch(()=>{});
+  }
+
+  init();
+})();

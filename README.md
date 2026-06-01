@@ -1,57 +1,106 @@
-# VideoMaker Studio
+# VideoMaker Studio AI
 
-WebApp statica pronta per GitHub Pages per creare video partendo da foto, video, audio e testi.
+Webapp statica pronta per GitHub Pages per creare video da foto, video, audio, testi, effetti, transizioni e sottotitoli AI.
 
 ## Funzioni principali
 
-- Importazione di più foto.
-- Importazione di video.
-- Importazione di una traccia audio.
-- Timeline con corsie separate:
-  - Foto / Video
+- Interfaccia professionale tipo mini editor video.
+- Timeline multi-corsia:
+  - Video / foto
   - Testi
+  - Sottotitoli
   - Audio
-- Blocchi trascinabili nella timeline.
-- Maniglie laterali per allungare o accorciare clip, testi e audio.
-- Taglio della traccia audio direttamente dalla corsia audio.
-- Corsia testo dedicata, con testi spostabili e ridimensionabili.
-- Pannello di modifica dell’elemento selezionato.
-- Menu effetti con:
-  - filtri colore
-  - transizioni
-  - effetti movimento
-- Pulsante per adattare automaticamente foto/video alla durata dell’audio.
-- Anteprima del montaggio.
-- Miniature grafiche reali dentro la timeline per foto e video.
-- Esportazione in formato WEBM.
-- Esportazione diretta in MP4 nel browser tramite FFmpeg.wasm.
-- Installabile come PWA.
+- Blocchi selezionabili, trascinabili e ridimensionabili.
+- Miniature reali nella timeline per foto e video.
+- Waveform grafico per la traccia audio.
+- Inspector laterale per modificare inizio, durata, testo, colore, posizione, filtri, movimenti e transizioni.
+- Effetti video:
+  - Cinematic
+  - Caldo
+  - Freddo
+  - Bianco/Nero
+  - Vintage
+  - Dream Glow
+  - Neon
+  - Drammatico
+  - Soft Portrait
+  - Social Pop
+  - Noir
+  - VHS
+  - Glitch
+  - Blur Mood
+  - Breaking News
+- Movimenti foto:
+  - Zoom In
+  - Zoom Out
+  - Pan Sinistra
+  - Pan Destra
+  - Pan Alto
+  - Pan Basso
+  - Rotazione lenta
+  - Pulse Beat
+  - Float
+- Transizioni:
+  - Fade
+  - Crossfade
+  - Slide Left / Right / Up / Down
+  - Zoom Blur
+  - Wipe
+  - Circle Reveal
+  - Spin
+  - Flash
+  - Fade Black
+  - Pixel Pop
+  - Split
+  - Swirl
+- Sottotitoli:
+  - Creazione manuale
+  - Importazione SRT
+  - Generazione demo da testo
+  - Generazione AI da audio con API OpenAI oppure proxy sicuro
+- Esportazione WEBM.
+- Esportazione MP4 tramite FFmpeg.wasm.
+- Salvataggio e caricamento progetto JSON.
+- PWA installabile.
 
-## Come pubblicarla su GitHub Pages
+## Pubblicazione su GitHub Pages
 
-1. Crea un nuovo repository su GitHub.
+1. Crea un nuovo repository GitHub, ad esempio `videomaker-studio-ai`.
 2. Carica tutti i file contenuti in questa cartella.
-3. Vai su `Settings`.
-4. Vai su `Pages`.
-5. Seleziona `Deploy from a branch`.
-6. Scegli branch `main` e cartella `/root`.
-7. Salva.
+3. Vai su `Settings` > `Pages`.
+4. In `Build and deployment`, scegli `Deploy from a branch`.
+5. Seleziona branch `main` e cartella `/root`.
+6. Salva.
+7. Dopo qualche minuto GitHub ti darà il link pubblico.
 
-Dopo qualche minuto GitHub fornirà il link pubblico della webapp.
+## Sottotitoli AI
 
-## Uso rapido
+La webapp può inviare un file audio alla API OpenAI per ricevere una trascrizione con segmenti temporali. Per sicurezza, non inserire mai una chiave API direttamente nel codice pubblicato online.
 
-1. Carica foto e/o video.
-2. Carica una traccia audio.
-3. Trascina i blocchi nella timeline.
-4. Usa le maniglie laterali per modificare la durata.
-5. Premi `+ Aggiungi testo` per creare un testo nella corsia dedicata.
-6. Seleziona una clip e applica filtri, transizioni o movimenti.
-7. Usa `Adatta foto/video all’audio` per sincronizzare il montaggio alla musica.
-8. Premi `Anteprima` per controllare il risultato.
-9. Premi `Esporta WEBM` per generare velocemente il video.
-10. Premi `Esporta MP4` per creare un file MP4 direttamente nel browser.
+Hai due modalità:
 
-## Nota sul formato video
+### Modalità semplice
 
-La webapp esporta ancora in WEBM per avere una generazione veloce e compatibile con il browser. In più include l’esportazione MP4: prima genera il video base, poi lo converte nel browser con FFmpeg.wasm. La prima conversione può essere lenta perché deve scaricare il motore WebAssembly. Su telefoni o PC poco potenti è consigliato iniziare con video brevi.
+Inserisci la tua chiave API nel campo della webapp. La chiave rimane nel browser e non viene salvata nei file GitHub. Puoi scegliere se salvarla nel localStorage del browser.
+
+### Modalità più sicura
+
+Usa un proxy personale, ad esempio un Cloudflare Worker, e inserisci l'URL nel campo `Proxy URL opzionale`. In questo modo la chiave API resta nel worker e non viene mai mostrata al browser.
+
+## Note importanti
+
+- L'esportazione video viene fatta nel browser. Video lunghi o con molti effetti possono richiedere tempo.
+- La conversione MP4 carica FFmpeg.wasm da CDN. Serve connessione internet.
+- Su dispositivi poco potenti conviene esportare video brevi.
+- Se MP4 non funziona per limiti del browser, esporta in WEBM.
+- I file locali non vengono caricati su un server: restano nel browser, salvo l'uso volontario della funzione AI sottotitoli.
+
+## File inclusi
+
+- `index.html`
+- `style.css`
+- `script.js`
+- `manifest.webmanifest`
+- `service-worker.js`
+- `icon.svg`
+- `README.md`

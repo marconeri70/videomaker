@@ -3,247 +3,215 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>VideoMaker Studio</title>
-  <link rel="stylesheet" href="style.css" />
+  <meta name="theme-color" content="#080b18" />
+  <title>VideoMaker Studio AI</title>
   <link rel="manifest" href="manifest.webmanifest" />
-  <meta name="theme-color" content="#0b1020" />
+  <link rel="icon" href="icon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <header class="topbar">
-    <div>
-      <p class="eyebrow">WebApp GitHub Pages</p>
-      <h1>VideoMaker Studio</h1>
-      <p class="subtitle">Timeline con corsie per foto/video, testi e audio. Trascina, taglia, ridimensiona e applica effetti.</p>
-    </div>
-    <div class="top-actions">
-      <button id="installBtn" class="ghost hidden">Installa app</button>
-      <button id="resetBtn" class="danger">Pulisci progetto</button>
-    </div>
-  </header>
-
-  <main class="app-shell">
-    <section class="panel left-panel">
-      <div class="section-head">
+  <div class="app-shell">
+    <header class="topbar glass">
+      <div class="brand">
+        <div class="brand-mark">▶</div>
         <div>
-          <h2>1. Importa contenuti</h2>
-          <p>Carica foto, video e audio. Tutto resta nel browser, nessun file viene caricato online.</p>
+          <h1>VideoMaker Studio <span>AI</span></h1>
+          <p>Montaggio foto, video, audio, testi, sottotitoli e transizioni</p>
         </div>
       </div>
 
-      <div class="upload-grid">
-        <label class="upload-card">
-          <span>📷 Foto</span>
-          <small>JPG, PNG, WEBP</small>
-          <input id="imageInput" type="file" accept="image/*" multiple />
-        </label>
-        <label class="upload-card">
-          <span>🎬 Video</span>
-          <small>MP4, MOV, WEBM</small>
-          <input id="videoInput" type="file" accept="video/*" multiple />
-        </label>
-        <label class="upload-card">
-          <span>🎵 Audio</span>
-          <small>MP3, WAV, M4A</small>
-          <input id="audioInput" type="file" accept="audio/*" />
-        </label>
-      </div>
-
-      <div class="settings-grid">
-        <label>
-          Formato video
+      <div class="top-actions">
+        <label class="control tiny">
+          Formato
           <select id="formatSelect">
-            <option value="1080x1920">Verticale 1080×1920</option>
-            <option value="1920x1080">Orizzontale 1920×1080</option>
-            <option value="1080x1080">Quadrato 1080×1080</option>
+            <option value="vertical">Verticale 1080×1920</option>
+            <option value="horizontal">Orizzontale 1920×1080</option>
+            <option value="square">Quadrato 1080×1080</option>
           </select>
         </label>
-        <label>
-          Durata foto nuova
-          <input id="defaultDuration" type="number" min="0.5" max="60" step="0.5" value="4" />
-        </label>
-        <label>
-          Scala timeline
-          <input id="timelineScale" type="range" min="35" max="160" step="5" value="80" />
-        </label>
-        <label>
-          FPS esportazione
+        <label class="control tiny">
+          FPS
           <select id="fpsSelect">
-            <option value="24">24 fps</option>
-            <option value="30" selected>30 fps</option>
+            <option value="24">24</option>
+            <option value="30" selected>30</option>
+            <option value="60">60</option>
           </select>
         </label>
+        <button id="saveProjectBtn" class="btn ghost">Salva progetto</button>
+        <label class="btn ghost file-btn">Carica progetto<input id="loadProjectInput" type="file" accept="application/json" /></label>
+        <button id="exportWebmBtn" class="btn secondary">Esporta WEBM</button>
+        <button id="exportMp4Btn" class="btn primary">Esporta MP4</button>
       </div>
+    </header>
 
-      <div class="tool-box">
-        <div class="section-head compact">
+    <main class="workspace">
+      <aside class="left-panel glass">
+        <nav class="tabs">
+          <button class="tab active" data-tab="media">Media</button>
+          <button class="tab" data-tab="effects">Effetti</button>
+          <button class="tab" data-tab="transitions">Transizioni</button>
+          <button class="tab" data-tab="subtitles">Sottotitoli AI</button>
+        </nav>
+
+        <section id="mediaTab" class="panel-tab active">
+          <div class="upload-card">
+            <label class="dropzone" id="dropZone">
+              <input id="mediaInput" type="file" multiple accept="image/*,video/*,audio/*" />
+              <strong>Carica foto, video e audio</strong>
+              <span>Puoi trascinare i file qui o selezionarli dal PC</span>
+            </label>
+          </div>
+          <div class="quick-actions grid2">
+            <button id="addTextBtn" class="btn secondary">+ Testo</button>
+            <button id="addSubtitleBtn" class="btn secondary">+ Sottotitolo</button>
+            <button id="fitPhotosBtn" class="btn ghost">Adatta foto all’audio</button>
+            <button id="autoBeatBtn" class="btn ghost">Taglio ritmico</button>
+          </div>
+          <h2>Libreria</h2>
+          <div id="assetLibrary" class="asset-library empty-state">Nessun file caricato</div>
+        </section>
+
+        <section id="effectsTab" class="panel-tab">
+          <div class="panel-heading">
+            <h2>Effetti video</h2>
+            <p>Seleziona una clip foto/video e applica un look.</p>
+          </div>
+          <div id="effectGrid" class="preset-grid"></div>
+          <div class="panel-heading compact">
+            <h2>Movimenti</h2>
+            <p>Perfetti per creare video dinamici da foto.</p>
+          </div>
+          <div id="motionGrid" class="preset-grid"></div>
+        </section>
+
+        <section id="transitionsTab" class="panel-tab">
+          <div class="panel-heading">
+            <h2>Transizioni</h2>
+            <p>Applica alla clip selezionata. La transizione viene usata in entrata e in uscita.</p>
+          </div>
+          <div id="transitionGrid" class="preset-grid"></div>
+        </section>
+
+        <section id="subtitlesTab" class="panel-tab">
+          <div class="panel-heading">
+            <h2>Sottotitoli AI da audio</h2>
+            <p>Genera sottotitoli sincronizzati partendo dalla traccia audio.</p>
+          </div>
+          <label class="control">
+            Chiave API OpenAI o Proxy sicuro
+            <input id="apiKeyInput" type="password" placeholder="sk-... oppure lascia vuoto se usi un proxy" autocomplete="off" />
+          </label>
+          <label class="control">
+            Proxy URL opzionale
+            <input id="proxyUrlInput" type="url" placeholder="https://tuo-worker.example.com/transcribe" />
+          </label>
+          <label class="control">
+            Modello
+            <select id="transcribeModel">
+              <option value="gpt-4o-mini-transcribe">gpt-4o-mini-transcribe</option>
+              <option value="gpt-4o-transcribe">gpt-4o-transcribe</option>
+              <option value="whisper-1">whisper-1</option>
+            </select>
+          </label>
+          <label class="checkline"><input id="saveKeyCheck" type="checkbox" /> Salva chiave solo in questo browser</label>
+          <button id="generateAiSubtitlesBtn" class="btn primary full">Genera sottotitoli AI</button>
+          <button id="makeDraftSubtitlesBtn" class="btn secondary full">Crea sottotitoli demo dal testo</button>
+          <label class="control">
+            Importa SRT
+            <input id="srtInput" type="file" accept=".srt,text/plain" />
+          </label>
+          <textarea id="subtitleDraftText" class="textarea" rows="6" placeholder="Incolla qui un testo se vuoi creare sottotitoli automatici distribuiti sulla durata dell'audio..."></textarea>
+          <div class="hint">La chiave non viene inserita nel codice della webapp. Se pubblichi online, non mettere mai una chiave fissa nei file.</div>
+        </section>
+      </aside>
+
+      <section class="stage-panel">
+        <div class="preview-header glass">
           <div>
-            <h2>2. Strumenti montaggio</h2>
-            <p>Sincronizza le foto con la musica o aggiungi blocchi testo nella corsia dedicata.</p>
+            <strong id="projectTitle">Nuovo progetto</strong>
+            <span id="timelineInfo">Durata 0:00</span>
+          </div>
+          <div class="preview-actions">
+            <button id="undoBtn" class="icon-btn" title="Annulla">↶</button>
+            <button id="redoBtn" class="icon-btn" title="Ripristina">↷</button>
+            <button id="previewFitBtn" class="icon-btn" title="Adatta preview">⛶</button>
           </div>
         </div>
-        <div class="row gap wrap">
-          <button id="fitMediaToAudioBtn" class="secondary">Adatta foto/video all’audio</button>
-          <button id="compactMediaBtn" class="ghost">Allinea clip senza spazi</button>
-          <button id="addTextBtn" class="secondary">+ Aggiungi testo</button>
-        </div>
-      </div>
 
-      <div class="tool-box">
-        <div class="section-head compact">
-          <div>
-            <h2>3. Menu effetti</h2>
-            <p>Applica filtri, transizioni ed effetti alla clip selezionata o a tutto il montaggio.</p>
+        <div class="preview-wrap glass">
+          <canvas id="previewCanvas" width="1080" height="1920"></canvas>
+          <div id="safeArea" class="safe-area"></div>
+          <div id="loadingOverlay" class="loading-overlay hidden">
+            <div class="spinner"></div>
+            <strong id="loadingTitle">Sto preparando il video...</strong>
+            <span id="loadingText">0%</span>
           </div>
         </div>
-        <div class="effects-grid">
-          <label>
-            Filtro
-            <select id="filterPreset">
-              <option value="none">Nessuno</option>
-              <option value="cinema">Cinema</option>
-              <option value="warm">Caldo</option>
-              <option value="cold">Freddo</option>
-              <option value="bw">Bianco e nero</option>
-              <option value="vintage">Vintage</option>
-              <option value="dramatic">Drammatico</option>
-              <option value="softBlur">Sfocato soft</option>
-            </select>
-          </label>
-          <label>
-            Transizione
-            <select id="transitionPreset">
-              <option value="none">Nessuna</option>
-              <option value="fade">Dissolvenza</option>
-              <option value="slide">Scorrimento</option>
-              <option value="zoom">Zoom</option>
-              <option value="wipe">Tendina</option>
-            </select>
-          </label>
-          <label>
-            Effetto movimento
-            <select id="motionPreset">
-              <option value="none">Nessuno</option>
-              <option value="zoomIn">Zoom lento avanti</option>
-              <option value="zoomOut">Zoom lento indietro</option>
-              <option value="panLeft">Panoramica sinistra</option>
-              <option value="panRight">Panoramica destra</option>
-              <option value="shake">Vibrazione</option>
-            </select>
-          </label>
-          <label>
-            Durata transizione
-            <input id="transitionDuration" type="number" min="0" max="3" step="0.1" value="0.6" />
-          </label>
+
+        <div class="player glass">
+          <button id="playBtn" class="play-btn">▶</button>
+          <input id="timeSlider" type="range" min="0" max="0" value="0" step="0.01" />
+          <span id="timeReadout">0:00 / 0:00</span>
         </div>
-        <div class="row gap wrap">
-          <button id="applyFxSelectedBtn" class="secondary">Applica alla clip selezionata</button>
-          <button id="applyFxAllBtn" class="ghost">Applica a tutte le clip</button>
+      </section>
+
+      <aside class="right-panel glass">
+        <div class="panel-heading">
+          <h2>Inspector</h2>
+          <p id="selectedLabel">Nessun elemento selezionato</p>
+        </div>
+        <div id="inspector" class="inspector empty-state">Seleziona una clip nella timeline per modificarla.</div>
+      </aside>
+    </main>
+
+    <section class="timeline-panel glass">
+      <div class="timeline-toolbar">
+        <div class="toolbar-left">
+          <button id="zoomOutBtn" class="icon-btn">−</button>
+          <input id="zoomSlider" type="range" min="45" max="180" value="95" />
+          <button id="zoomInBtn" class="icon-btn">+</button>
+          <button id="snapBtn" class="btn ghost small active">Snap 0.1s</button>
+        </div>
+        <div class="toolbar-right">
+          <button id="addTrackTextBtn" class="btn secondary small">+ Testo</button>
+          <button id="addTrackSubtitleBtn" class="btn secondary small">+ Sottotitolo</button>
+          <button id="deleteSelectedBtn" class="btn danger small">Elimina</button>
         </div>
       </div>
-
-      <div class="tool-box">
-        <div class="section-head compact">
-          <div>
-            <h2>4. Audio</h2>
-            <p id="audioInfo">Nessun audio caricato.</p>
-          </div>
+      <div class="timeline-scroll" id="timelineScroll">
+        <div class="ruler-row">
+          <div class="track-label ruler-label">Tempo</div>
+          <div id="ruler" class="ruler"></div>
         </div>
-        <canvas id="waveform" width="900" height="120"></canvas>
-        <div class="settings-grid audio-grid">
-          <label>
-            Volume musica
-            <input id="audioVolume" type="range" min="0" max="1" step="0.05" value="0.85" />
-          </label>
-          <label>
-            Fade musica
-            <select id="musicFadeSelect">
-              <option value="0">Nessuno</option>
-              <option value="1" selected>1 secondo</option>
-              <option value="2">2 secondi</option>
-              <option value="3">3 secondi</option>
-            </select>
-          </label>
+        <div class="track-row" data-track="media">
+          <div class="track-label"><b>Video</b><span>foto / clip</span></div>
+          <div class="track-lane" id="mediaTrack"></div>
         </div>
-        <div class="row gap wrap">
-          <button id="previewAudioBtn" class="ghost">▶ Prova audio</button>
-          <button id="stopAudioBtn" class="ghost">■ Stop audio</button>
+        <div class="track-row" data-track="text">
+          <div class="track-label"><b>Testi</b><span>titoli / callout</span></div>
+          <div class="track-lane" id="textTrack"></div>
         </div>
+        <div class="track-row" data-track="subtitles">
+          <div class="track-label"><b>Sottotitoli</b><span>AI / manuali</span></div>
+          <div class="track-lane" id="subtitlesTrack"></div>
+        </div>
+        <div class="track-row" data-track="audio">
+          <div class="track-label"><b>Audio</b><span>musica / voce</span></div>
+          <div class="track-lane" id="audioTrack"></div>
+        </div>
+        <div id="playhead" class="playhead"><span></span></div>
       </div>
     </section>
+  </div>
 
-    <section class="panel right-panel">
-      <div class="preview-header">
-        <div>
-          <h2>Anteprima</h2>
-          <p id="statusText">Pronto</p>
-        </div>
-        <div class="export-actions">
-          <button id="previewBtn" class="secondary">▶ Anteprima</button>
-          <button id="stopPreviewBtn" class="ghost">■ Stop</button>
-          <button id="exportBtn" class="primary">⬇ Esporta WEBM</button>
-          <button id="exportMp4Btn" class="primary mp4">⬇ Esporta MP4</button>
-        </div>
-      </div>
-
-      <div class="canvas-wrap">
-        <canvas id="stage" width="1080" height="1920"></canvas>
-      </div>
-
-      <div class="transport">
-        <span id="currentTimeLabel">0:00</span>
-        <input id="scrubRange" type="range" min="0" max="0" step="0.05" value="0" />
-        <span id="totalTimeLabel">0:00</span>
-      </div>
-
-      <div class="progress-wrap">
-        <div id="progressBar"></div>
-      </div>
-
-      <div id="downloadBox" class="download-box hidden">
-        <h3 id="downloadTitle">Video pronto ✅</h3>
-        <p id="downloadMessage">Scarica il file generato dal browser.</p>
-        <a id="downloadLink" download="videomaker-studio-export.webm">Scarica video</a>
-      </div>
-    </section>
-
-    <section class="panel timeline-panel">
-      <div class="timeline-head">
-        <div>
-          <h2>5. Timeline a corsie</h2>
-          <p>Trascina i blocchi per spostarli. Usa le maniglie ai lati per accorciare o allungare testo, audio e clip.</p>
-        </div>
-        <div class="badges">
-          <span id="durationBadge">Video 0s</span>
-          <span id="audioDurationBadge">Audio 0s</span>
-        </div>
-      </div>
-      <div class="timeline-help">
-        <span>🟦 Foto/Video</span>
-        <span>🟪 Testi</span>
-        <span>🟩 Audio</span>
-        <span>↔ trascina bordi</span>
-      </div>
-      <div id="timelineEditor" class="timeline-editor empty">
-        <p>Aggiungi foto, video o audio per iniziare il montaggio.</p>
-      </div>
-    </section>
-
-    <section class="panel inspector-panel">
-      <div class="section-head compact">
-        <div>
-          <h2>6. Pannello modifica</h2>
-          <p id="selectedInfo">Nessun elemento selezionato.</p>
-        </div>
-      </div>
-      <div id="inspector" class="inspector-empty">
-        <p>Seleziona un blocco nella timeline per modificare durata, posizione, testo, filtri o audio.</p>
-      </div>
-    </section>
-  </main>
-
-  <footer>
-    <p>WebApp statica pronta per GitHub Pages. Esportazione locale in WEBM e conversione MP4 nel browser con FFmpeg.wasm.</p>
-  </footer>
+  <template id="clipTemplate">
+    <div class="clip">
+      <div class="resize-handle left"></div>
+      <div class="clip-thumb"></div>
+      <div class="clip-content"></div>
+      <div class="resize-handle right"></div>
+    </div>
+  </template>
 
   <script src="script.js"></script>
 </body>

@@ -1,16 +1,12 @@
 {
-  "name": "VideoMaker Studio",
-  "short_name": "VideoMaker",
+  "name": "VideoMaker Studio AI",
+  "short_name": "Studio AI",
+  "description": "Webapp per montare video da foto, video, audio, testi, effetti, transizioni e sottotitoli AI.",
   "start_url": "./index.html",
   "display": "standalone",
-  "background_color": "#0b1020",
-  "theme_color": "#0b1020",
-  "description": "WebApp per montare video da foto, video, audio e testi con timeline a corsie.",
+  "background_color": "#070913",
+  "theme_color": "#080b18",
   "icons": [
-    {
-      "src": "icon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml"
-    }
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }
   ]
 }
