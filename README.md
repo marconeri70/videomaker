@@ -1,39 +1,47 @@
-# VideoMaker WebApp
+# VideoMaker Timeline
 
-WebApp statica per GitHub Pages che permette di creare un video partendo da foto, video, audio e testi.
+WebApp statica per montare video da foto, video, audio e testi direttamente dal browser. È pensata per essere pubblicata gratis su GitHub Pages.
 
-## Funzioni incluse
+## Funzioni principali
 
-- Upload di più foto
-- Upload di video da inserire nella timeline
-- Upload di un audio principale
-- Audio dei video opzionale durante l’esportazione
-- Testi sovrapposti per ogni scena
-- Formato verticale, orizzontale o quadrato
-- Anteprima nel browser
-- Esportazione in formato WEBM
-- Installabile come PWA base
+- Caricamento di foto multiple.
+- Caricamento di video.
+- Caricamento di una traccia audio.
+- Timeline con corsia scene e corsia audio.
+- Selezione e modifica di ogni foto/video.
+- Durata foto modificabile manualmente.
+- Pulsante **Adatta foto all'audio** per distribuire automaticamente la durata delle foto sulla lunghezza della musica.
+- Taglio audio con campo inizio/fine.
+- Prova audio.
+- Testo sovrapposto per ogni scena.
+- Modifica posizione, dimensione e colore del testo.
+- Taglio video con inizio/fine.
+- Anteprima del montaggio.
+- Esportazione in WEBM.
+- PWA installabile.
 
 ## Come pubblicarla su GitHub Pages
 
-1. Crea un nuovo repository su GitHub, ad esempio `videomaker-webapp`.
-2. Carica tutti questi file nella root del repository:
-   - `index.html`
-   - `style.css`
-   - `script.js`
-   - `manifest.webmanifest`
-   - `service-worker.js`
-   - `icon.svg`
-3. Vai su **Settings** del repository.
-4. Apri **Pages**.
-5. In **Build and deployment**, scegli:
-   - Source: `Deploy from a branch`
-   - Branch: `main`
-   - Folder: `/root`
-6. Salva.
-7. Dopo qualche minuto GitHub mostrerà il link pubblico della WebApp.
+1. Crea un nuovo repository su GitHub, ad esempio `videomaker-timeline`.
+2. Carica tutti i file di questa cartella nel repository.
+3. Vai su **Settings**.
+4. Vai su **Pages**.
+5. In **Build and deployment**, seleziona **Deploy from a branch**.
+6. Scegli branch `main` e cartella `/root`.
+7. Salva.
+8. Dopo poco GitHub ti mostrerà il link pubblico della webapp.
 
-## Limite importante
+## Come usarla
 
-La versione 1 esporta in WEBM perché funziona direttamente dal browser senza server.
-Per esportare direttamente in MP4 bisogna aggiungere una seconda fase con FFmpeg.wasm oppure usare un servizio esterno/server.
+1. Carica foto e video.
+2. Carica una traccia audio.
+3. Imposta inizio e fine dell'audio, se vuoi tagliare la musica.
+4. Premi **Adatta foto all'audio** per distribuire le foto sulla durata della traccia.
+5. Clicca una scena nella timeline.
+6. Modifica durata, testo, zoom, colore e posizione del testo.
+7. Premi **Anteprima**.
+8. Quando il risultato va bene, premi **Esporta WEBM**.
+
+## Nota sul formato video
+
+La webapp esporta in WEBM perché funziona direttamente nel browser senza server e senza programmi esterni. Se ti serve MP4, puoi convertire il file con CapCut, Canva, VLC o un convertitore online.
