@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>VideoMaker WebApp</title>
+  <link rel="stylesheet" href="style.css" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <meta name="theme-color" content="#101827" />
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">WebApp GitHub Pages</p>
+      <h1>VideoMaker</h1>
+      <p class="subtitle">Monta video da foto, video, audio e testi direttamente dal browser.</p>
+    </div>
+    <div class="top-actions">
+      <button id="installBtn" class="ghost hidden">Installa app</button>
+      <button id="resetBtn" class="danger">Pulisci progetto</button>
+    </div>
+  </header>
+
+  <main class="app-shell">
+    <section class="panel controls-panel">
+      <h2>1. Importa contenuti</h2>
+      <div class="upload-grid">
+        <label class="upload-card">
+          <span>📷 Foto</span>
+          <small>JPG, PNG, WEBP</small>
+          <input id="imageInput" type="file" accept="image/*" multiple />
+        </label>
+        <label class="upload-card">
+          <span>🎬 Video</span>
+          <small>MP4, MOV, WEBM</small>
+          <input id="videoInput" type="file" accept="video/*" multiple />
+        </label>
+        <label class="upload-card">
+          <span>🎵 Audio</span>
+          <small>MP3, WAV, M4A</small>
+          <input id="audioInput" type="file" accept="audio/*" />
+        </label>
+      </div>
+
+      <div class="settings-grid">
+        <label>
+          Formato video
+          <select id="formatSelect">
+            <option value="1080x1920">Verticale 1080×1920</option>
+            <option value="1920x1080">Orizzontale 1920×1080</option>
+            <option value="1080x1080">Quadrato 1080×1080</option>
+          </select>
+        </label>
+        <label>
+          Durata foto predefinita
+          <input id="defaultDuration" type="number" min="1" max="30" step="1" value="4" />
+        </label>
+        <label>
+          Transizione dissolvenza
+          <input id="fadeDuration" type="number" min="0" max="2" step="0.1" value="0.5" />
+        </label>
+        <label>
+          Volume audio principale
+          <input id="audioVolume" type="range" min="0" max="1" step="0.05" value="0.8" />
+        </label>
+      </div>
+
+      <div class="text-tools">
+        <h2>2. Testo rapido</h2>
+        <textarea id="bulkText" placeholder="Scrivi qui un testo da applicare a tutte le scene, oppure modifica ogni scena nella timeline."></textarea>
+        <div class="row gap">
+          <button id="applyTextBtn" class="secondary">Applica a tutte le scene</button>
+          <label class="check"><input id="watermarkCheck" type="checkbox" checked /> Firma VideoMaker</label>
+          <label class="check"><input id="videoAudioCheck" type="checkbox" checked /> Usa anche audio dei video</label>
+        </div>
+      </div>
+
+      <div class="timeline-head">
+        <h2>3. Timeline</h2>
+        <span id="durationBadge">0s</span>
+      </div>
+      <div id="timeline" class="timeline empty">
+        <p>Aggiungi foto o video per iniziare.</p>
+      </div>
+    </section>
+
+    <section class="panel preview-panel">
+      <div class="preview-header">
+        <div>
+          <h2>Anteprima</h2>
+          <p id="statusText">Pronto</p>
+        </div>
+        <div class="export-actions">
+          <button id="previewBtn" class="secondary">▶ Anteprima</button>
+          <button id="exportBtn" class="primary">⬇ Esporta WEBM</button>
+        </div>
+      </div>
+
+      <div class="canvas-wrap">
+        <canvas id="stage" width="1080" height="1920"></canvas>
+      </div>
+
+      <div class="progress-wrap">
+        <div id="progressBar"></div>
+      </div>
+
+      <div id="downloadBox" class="download-box hidden">
+        <h3>Video pronto ✅</h3>
+        <p>Scarica il file e, se serve MP4, puoi convertirlo con CapCut, Canva, VLC o un convertitore online.</p>
+        <a id="downloadLink" download="videomaker-export.webm">Scarica video</a>
+      </div>
+
+      <div class="tips">
+        <h3>Consigli</h3>
+        <p>Per Reel, TikTok e Stories usa il formato verticale. Per YouTube usa il formato orizzontale. I file restano sul tuo dispositivo: non vengono caricati su server.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p>Creato per funzionare come sito statico su GitHub Pages.</p>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>
