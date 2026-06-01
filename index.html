@@ -181,6 +181,7 @@
           <button id="previewBtn" class="secondary">▶ Anteprima</button>
           <button id="stopPreviewBtn" class="ghost">■ Stop</button>
           <button id="exportBtn" class="primary">⬇ Esporta WEBM</button>
+          <button id="exportMp4Btn" class="primary mp4">⬇ Esporta MP4</button>
         </div>
       </div>
 
@@ -199,8 +200,8 @@
       </div>
 
       <div id="downloadBox" class="download-box hidden">
-        <h3>Video pronto ✅</h3>
-        <p>Scarica il file WEBM. Per ottenere MP4 puoi convertirlo con CapCut, Canva, VLC o un convertitore online.</p>
+        <h3 id="downloadTitle">Video pronto ✅</h3>
+        <p id="downloadMessage">Scarica il file generato dal browser.</p>
         <a id="downloadLink" download="videomaker-studio-export.webm">Scarica video</a>
       </div>
     </section>
@@ -241,7 +242,7 @@
   </main>
 
   <footer>
-    <p>WebApp statica pronta per GitHub Pages. Esportazione locale in WEBM tramite browser.</p>
+    <p>WebApp statica pronta per GitHub Pages. Esportazione locale in WEBM e conversione MP4 nel browser con FFmpeg.wasm.</p>
   </footer>
 
   <script src="script.js"></script>

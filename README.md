@@ -22,7 +22,9 @@ WebApp statica pronta per GitHub Pages per creare video partendo da foto, video,
   - effetti movimento
 - Pulsante per adattare automaticamente foto/video alla durata dell’audio.
 - Anteprima del montaggio.
+- Miniature grafiche reali dentro la timeline per foto e video.
 - Esportazione in formato WEBM.
+- Esportazione diretta in MP4 nel browser tramite FFmpeg.wasm.
 - Installabile come PWA.
 
 ## Come pubblicarla su GitHub Pages
@@ -47,8 +49,9 @@ Dopo qualche minuto GitHub fornirà il link pubblico della webapp.
 6. Seleziona una clip e applica filtri, transizioni o movimenti.
 7. Usa `Adatta foto/video all’audio` per sincronizzare il montaggio alla musica.
 8. Premi `Anteprima` per controllare il risultato.
-9. Premi `Esporta WEBM` per generare il video.
+9. Premi `Esporta WEBM` per generare velocemente il video.
+10. Premi `Esporta MP4` per creare un file MP4 direttamente nel browser.
 
 ## Nota sul formato video
 
-La webapp esporta in WEBM perché può funzionare completamente nel browser senza server. Per ottenere MP4 puoi convertire il file WEBM con CapCut, Canva, VLC o altri convertitori.
+La webapp esporta ancora in WEBM per avere una generazione veloce e compatibile con il browser. In più include l’esportazione MP4: prima genera il video base, poi lo converte nel browser con FFmpeg.wasm. La prima conversione può essere lenta perché deve scaricare il motore WebAssembly. Su telefoni o PC poco potenti è consigliato iniziare con video brevi.

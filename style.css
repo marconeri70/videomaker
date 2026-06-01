@@ -348,6 +348,50 @@ canvas#stage {
 .resize-handle.left { left: 0; }
 .resize-handle.right { right: 0; }
 
+/* Miniature grafiche nella timeline */
+.clip.media {
+  background: rgba(15,23,42,0.92);
+}
+.clip-thumbs {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(38px, 1fr);
+  opacity: 0.92;
+}
+.clip-thumb {
+  background-size: cover;
+  background-position: center;
+  border-right: 1px solid rgba(255,255,255,0.16);
+}
+.clip-thumb-placeholder {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 24px;
+  background: linear-gradient(135deg, rgba(56,189,248,0.70), rgba(59,130,246,0.58));
+}
+.clip.media .clip-content {
+  position: relative;
+  z-index: 2;
+  height: 100%;
+  color: #fff;
+  text-shadow: 0 2px 8px rgba(0,0,0,0.86);
+  background: linear-gradient(90deg, rgba(2,6,23,0.78), rgba(2,6,23,0.28), rgba(2,6,23,0.62));
+}
+.clip.media .clip-content span {
+  color: rgba(255,255,255,0.86);
+}
+.clip.media .resize-handle {
+  background: rgba(255,255,255,0.46);
+}
+button.mp4 {
+  background: linear-gradient(135deg, #a78bfa, #f472b6);
+  color: white;
+}
+
 .inspector-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);

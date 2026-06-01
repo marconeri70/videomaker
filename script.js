@@ -31,6 +31,7 @@ const refs = {
   previewBtn: $('previewBtn'),
   stopPreviewBtn: $('stopPreviewBtn'),
   exportBtn: $('exportBtn'),
+  exportMp4Btn: $('exportMp4Btn'),
   resetBtn: $('resetBtn'),
   installBtn: $('installBtn'),
   scrubRange: $('scrubRange'),
@@ -38,6 +39,8 @@ const refs = {
   totalTimeLabel: $('totalTimeLabel'),
   progressBar: $('progressBar'),
   downloadBox: $('downloadBox'),
+  downloadTitle: $('downloadTitle'),
+  downloadMessage: $('downloadMessage'),
   downloadLink: $('downloadLink'),
   timelineEditor: $('timelineEditor'),
   durationBadge: $('durationBadge'),
@@ -67,6 +70,13 @@ const state = {
     timelineStart: 0,
     buffer: null,
     element: null,
+  },
+  ffmpeg: {
+    instance: null,
+    fetchFile: null,
+    toBlobURL: null,
+    loaded: false,
+    loadingPromise: null,
   },
 };
 
@@ -370,6 +380,66 @@ function updateDurationUi() {
   refs.progressBar.style.width = total ? `${Math.min(100, (state.currentTime / total) * 100)}%` : '0%';
 }
 
+
+function createThumbFromElement(element, width = 176, height = 99) {
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const c = canvas.getContext('2d');
+  c.fillStyle = '#020617';
+  c.fillRect(0, 0, width, height);
+  const mediaW = element.naturalWidth || element.videoWidth || width;
+  const mediaH = element.naturalHeight || element.videoHeight || height;
+  const box = objectFitCoverDimensions(mediaW, mediaH, width, height, 1, 0, 0);
+  try { c.drawImage(element, box.x, box.y, box.width, box.height); } catch (_) {}
+  return canvas.toDataURL('image/jpeg', 0.72);
+}
+
+function repeatedImageThumbs(img, count = 5) {
+  const thumb = createThumbFromElement(img);
+  return Array.from({ length: count }, () => thumb);
+}
+
+function waitForVideoSeek(video, time) {
+  return new Promise((resolve) => {
+    const done = () => {
+      video.removeEventListener('seeked', done);
+      resolve();
+    };
+    video.addEventListener('seeked', done, { once: true });
+    try { video.currentTime = time; } catch (_) { resolve(); }
+    setTimeout(resolve, 900);
+  });
+}
+
+async function buildVideoThumbs(url, duration, count = 6) {
+  const video = document.createElement('video');
+  video.src = url;
+  video.muted = true;
+  video.playsInline = true;
+  video.preload = 'auto';
+  await new Promise((resolve) => {
+    video.onloadedmetadata = resolve;
+    video.onerror = resolve;
+  });
+  const safeDuration = Number.isFinite(duration) && duration > 0 ? duration : video.duration || 1;
+  const thumbs = [];
+  for (let i = 0; i < count; i += 1) {
+    const t = Math.min(Math.max(0.05, (safeDuration * (i + 0.5)) / count), Math.max(0.05, safeDuration - 0.05));
+    await waitForVideoSeek(video, t);
+    thumbs.push(createThumbFromElement(video));
+  }
+  return thumbs;
+}
+
+function renderClipThumbs(item) {
+  const thumbs = item.thumbnails?.length ? item.thumbnails : [];
+  if (!thumbs.length) {
+    return `<div class="clip-thumb-placeholder">${item.type === 'image' ? '📷' : '🎬'}</div>`;
+  }
+  return `<div class="clip-thumbs">${thumbs.slice(0, 7).map((src) => `<span class="clip-thumb" style="background-image:url('${src}')"></span>`).join('')}</div>`;
+}
+
 function createMediaClip(file, type) {
   const url = URL.createObjectURL(file);
   const start = nextMediaStart();
@@ -387,6 +457,7 @@ function createMediaClip(file, type) {
     zoom: 1,
     trimStart: 0,
     trimEnd: 0,
+    thumbnails: [],
     element: null,
   };
 
@@ -395,6 +466,7 @@ function createMediaClip(file, type) {
     img.onload = () => {
       base.width = img.naturalWidth;
       base.height = img.naturalHeight;
+      base.thumbnails = repeatedImageThumbs(img);
       renderAll();
     };
     img.src = url;
@@ -408,12 +480,18 @@ function createMediaClip(file, type) {
     video.preload = 'metadata';
     video.muted = true;
     video.playsInline = true;
-    video.onloadedmetadata = () => {
+    video.onloadedmetadata = async () => {
       base.trimEnd = Number.isFinite(video.duration) ? video.duration : base.duration;
       base.duration = Math.min(Math.max(1, base.trimEnd - base.trimStart), 8);
       base.width = video.videoWidth;
       base.height = video.videoHeight;
       renderAll();
+      try {
+        base.thumbnails = await buildVideoThumbs(url, base.trimEnd, 6);
+        renderAll();
+      } catch (error) {
+        console.warn('Miniature video non generate', error);
+      }
     };
     base.element = video;
     state.media.push(base);
@@ -605,6 +683,7 @@ function renderMediaBlocks(scale) {
     const icon = item.type === 'image' ? '📷' : '🎬';
     return `
       <div class="clip media ${isSelected('media', item.id) ? 'selected' : ''}" data-type="media" data-id="${item.id}" style="left:${left}px; width:${width}px">
+        ${renderClipThumbs(item)}
         <div class="resize-handle left" data-mode="resize-left"></div>
         <div class="clip-content" data-mode="drag">
           <strong>${icon} ${escapeHtml(item.fileName)}</strong>
@@ -1122,17 +1201,22 @@ async function buildAudioStream(total) {
   };
 }
 
-async function exportVideo() {
-  const total = projectDuration();
-  if (total <= 0) {
-    setStatus('Aggiungi almeno una foto, video, testo o audio.');
-    return;
-  }
-  stopPreview(false);
-  refs.exportBtn.disabled = true;
-  refs.downloadBox.classList.add('hidden');
-  setStatus('Esportazione in corso...');
+function setExportButtons(disabled) {
+  refs.exportBtn.disabled = disabled;
+  refs.exportMp4Btn.disabled = disabled;
+}
 
+function prepareDownload(blob, extension, message) {
+  const url = URL.createObjectURL(blob);
+  refs.downloadLink.href = url;
+  refs.downloadLink.download = `videomaker-studio-${Date.now()}.${extension}`;
+  refs.downloadLink.textContent = `Scarica video ${extension.toUpperCase()}`;
+  refs.downloadTitle.textContent = `Video ${extension.toUpperCase()} pronto ✅`;
+  refs.downloadMessage.textContent = message;
+  refs.downloadBox.classList.remove('hidden');
+}
+
+async function recordWebmBlob(total) {
   const fps = Number(refs.fpsSelect.value || 30);
   const canvasStream = stage.captureStream(fps);
   const audioPackage = await buildAudioStream(total);
@@ -1144,36 +1228,122 @@ async function exportVideo() {
   const recorder = new MediaRecorder(mixedStream, { mimeType });
   const chunks = [];
 
-  recorder.ondataavailable = (event) => {
-    if (event.data && event.data.size) chunks.push(event.data);
-  };
-  recorder.onstop = async () => {
-    const blob = new Blob(chunks, { type: 'video/webm' });
-    const url = URL.createObjectURL(blob);
-    refs.downloadLink.href = url;
-    refs.downloadLink.download = `videomaker-studio-${Date.now()}.webm`;
-    refs.downloadBox.classList.remove('hidden');
-    refs.exportBtn.disabled = false;
-    setStatus('Video esportato correttamente.');
-    try { await audioPackage.audioCtx.close(); } catch (_) {}
-  };
+  return new Promise((resolve, reject) => {
+    recorder.ondataavailable = (event) => {
+      if (event.data && event.data.size) chunks.push(event.data);
+    };
+    recorder.onerror = (event) => reject(event.error || new Error('Errore durante la registrazione WEBM.'));
+    recorder.onstop = async () => {
+      try { await audioPackage.audioCtx.close(); } catch (_) {}
+      mixedStream.getTracks().forEach((track) => track.stop());
+      resolve(new Blob(chunks, { type: 'video/webm' }));
+    };
 
-  recorder.start(500);
-  audioPackage.start();
-  const start = performance.now();
-  const render = (now) => {
-    const elapsed = (now - start) / 1000;
-    const t = Math.min(total, elapsed);
-    state.currentTime = t;
-    drawFrame(t);
-    updateDurationUi();
-    if (elapsed < total) {
-      requestAnimationFrame(render);
+    recorder.start(500);
+    audioPackage.start();
+    const start = performance.now();
+    const render = (now) => {
+      const elapsed = (now - start) / 1000;
+      const t = Math.min(total, elapsed);
+      state.currentTime = t;
+      drawFrame(t);
+      updateDurationUi();
+      refs.progressBar.style.width = `${Math.min(100, (t / total) * 100)}%`;
+      if (elapsed < total) {
+        requestAnimationFrame(render);
+      } else {
+        setTimeout(() => recorder.stop(), 180);
+      }
+    };
+    requestAnimationFrame(render);
+  });
+}
+
+async function loadFfmpeg() {
+  if (state.ffmpeg.loaded) return state.ffmpeg;
+  if (state.ffmpeg.loadingPromise) return state.ffmpeg.loadingPromise;
+
+  state.ffmpeg.loadingPromise = (async () => {
+    setStatus('Caricamento motore MP4 nel browser...');
+    const [{ FFmpeg }, { fetchFile, toBlobURL }] = await Promise.all([
+      import('https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js'),
+      import('https://unpkg.com/@ffmpeg/util@0.12.1/dist/esm/index.js'),
+    ]);
+    const ffmpeg = new FFmpeg();
+    ffmpeg.on('log', ({ message }) => console.log('[ffmpeg]', message));
+    ffmpeg.on('progress', ({ progress }) => {
+      if (Number.isFinite(progress)) refs.progressBar.style.width = `${Math.min(100, Math.max(0, progress * 100))}%`;
+    });
+    const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm';
+    await ffmpeg.load({
+      coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
+      wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
+    });
+    state.ffmpeg.instance = ffmpeg;
+    state.ffmpeg.fetchFile = fetchFile;
+    state.ffmpeg.toBlobURL = toBlobURL;
+    state.ffmpeg.loaded = true;
+    return state.ffmpeg;
+  })();
+
+  return state.ffmpeg.loadingPromise;
+}
+
+async function convertWebmToMp4(webmBlob) {
+  const ffmpegState = await loadFfmpeg();
+  const ffmpeg = ffmpegState.instance;
+  const fetchFile = ffmpegState.fetchFile;
+  const input = `input-${Date.now()}.webm`;
+  const output = `output-${Date.now()}.mp4`;
+  await ffmpeg.writeFile(input, await fetchFile(webmBlob));
+  setStatus('Conversione MP4 in corso...');
+  refs.progressBar.style.width = '0%';
+
+  const primary = ['-y', '-i', input, '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', '-c:a', 'aac', '-b:a', '128k', output];
+  const fallback = ['-y', '-i', input, '-c:v', 'mpeg4', '-q:v', '5', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', '-c:a', 'aac', '-b:a', '128k', output];
+
+  try {
+    await ffmpeg.exec(primary);
+  } catch (error) {
+    console.warn('Conversione libx264 non riuscita, provo fallback MPEG-4', error);
+    await ffmpeg.exec(fallback);
+  }
+
+  const data = await ffmpeg.readFile(output);
+  try { await ffmpeg.deleteFile(input); } catch (_) {}
+  try { await ffmpeg.deleteFile(output); } catch (_) {}
+  return new Blob([data.buffer], { type: 'video/mp4' });
+}
+
+async function exportVideo(format = 'webm') {
+  const total = projectDuration();
+  if (total <= 0) {
+    setStatus('Aggiungi almeno una foto, video, testo o audio.');
+    return;
+  }
+  stopPreview(false);
+  setExportButtons(true);
+  refs.downloadBox.classList.add('hidden');
+  refs.progressBar.style.width = '0%';
+  setStatus(format === 'mp4' ? 'Creo il video base prima della conversione MP4...' : 'Esportazione WEBM in corso...');
+
+  try {
+    const webmBlob = await recordWebmBlob(total);
+    if (format === 'mp4') {
+      const mp4Blob = await convertWebmToMp4(webmBlob);
+      prepareDownload(mp4Blob, 'mp4', 'Il file MP4 è stato generato direttamente nel browser. Su progetti lunghi può richiedere più tempo e memoria.');
+      setStatus('Video MP4 esportato correttamente.');
     } else {
-      setTimeout(() => recorder.stop(), 180);
+      prepareDownload(webmBlob, 'webm', 'Il file WEBM è stato generato direttamente dal browser.');
+      setStatus('Video WEBM esportato correttamente.');
     }
-  };
-  requestAnimationFrame(render);
+  } catch (error) {
+    console.error(error);
+    setStatus(`Errore esportazione: ${error.message || error}`);
+  } finally {
+    setExportButtons(false);
+    updateDurationUi();
+  }
 }
 
 function resetProject() {
@@ -1202,7 +1372,8 @@ function bindEvents() {
   refs.scrubRange.addEventListener('input', updatePlayheadFromScrub);
   refs.previewBtn.addEventListener('click', startPreview);
   refs.stopPreviewBtn.addEventListener('click', () => stopPreview(true));
-  refs.exportBtn.addEventListener('click', exportVideo);
+  refs.exportBtn.addEventListener('click', () => exportVideo('webm'));
+  refs.exportMp4Btn.addEventListener('click', () => exportVideo('mp4'));
   refs.resetBtn.addEventListener('click', resetProject);
   refs.fitMediaToAudioBtn.addEventListener('click', fitMediaToAudio);
   refs.compactMediaBtn.addEventListener('click', compactMedia);
