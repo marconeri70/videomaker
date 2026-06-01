@@ -1,6 +1,16 @@
-# VideoMaker Studio AI
+# VideoMaker Studio AI Pro
 
 Webapp statica pronta per GitHub Pages per creare video da foto, video, audio, testi, effetti, transizioni e sottotitoli AI.
+
+## Novità di questa versione
+
+- Esportazione MP4 più stabile:
+  - prima prova l'esportazione MP4 nativa del browser;
+  - se non disponibile, prova la conversione WEBM → MP4 con FFmpeg.wasm;
+  - messaggi di errore più chiari.
+- Cache PWA aggiornata: `videomaker-studio-ai-v6`.
+- Sottotitoli AI compatibili sia con Gemini sia con OpenAI.
+- Campo “Motore AI” per scegliere Gemini o OpenAI.
 
 ## Funzioni principali
 
@@ -14,86 +24,62 @@ Webapp statica pronta per GitHub Pages per creare video da foto, video, audio, t
 - Miniature reali nella timeline per foto e video.
 - Waveform grafico per la traccia audio.
 - Inspector laterale per modificare inizio, durata, testo, colore, posizione, filtri, movimenti e transizioni.
-- Effetti video:
-  - Cinematic
-  - Caldo
-  - Freddo
-  - Bianco/Nero
-  - Vintage
-  - Dream Glow
-  - Neon
-  - Drammatico
-  - Soft Portrait
-  - Social Pop
-  - Noir
-  - VHS
-  - Glitch
-  - Blur Mood
-  - Breaking News
-- Movimenti foto:
-  - Zoom In
-  - Zoom Out
-  - Pan Sinistra
-  - Pan Destra
-  - Pan Alto
-  - Pan Basso
-  - Rotazione lenta
-  - Pulse Beat
-  - Float
-- Transizioni:
-  - Fade
-  - Crossfade
-  - Slide Left / Right / Up / Down
-  - Zoom Blur
-  - Wipe
-  - Circle Reveal
-  - Spin
-  - Flash
-  - Fade Black
-  - Pixel Pop
-  - Split
-  - Swirl
+- Effetti video: Cinematic, Caldo, Freddo, Bianco/Nero, Vintage, Dream Glow, Neon, Drammatico, Soft Portrait, Social Pop, Noir, VHS, Glitch, Blur Mood, Breaking News.
+- Movimenti foto: Zoom In, Zoom Out, Pan, Rotazione lenta, Pulse Beat, Float.
+- Transizioni: Fade, Crossfade, Slide, Zoom Blur, Wipe, Circle Reveal, Spin, Flash, Fade Black, Pixel Pop, Split, Swirl.
 - Sottotitoli:
-  - Creazione manuale
-  - Importazione SRT
-  - Generazione demo da testo
-  - Generazione AI da audio con API OpenAI oppure proxy sicuro
+  - creazione manuale;
+  - importazione SRT;
+  - generazione demo da testo;
+  - generazione AI da audio con Gemini, OpenAI oppure proxy sicuro.
 - Esportazione WEBM.
-- Esportazione MP4 tramite FFmpeg.wasm.
+- Esportazione MP4.
 - Salvataggio e caricamento progetto JSON.
 - PWA installabile.
 
 ## Pubblicazione su GitHub Pages
 
-1. Crea un nuovo repository GitHub, ad esempio `videomaker-studio-ai`.
-2. Carica tutti i file contenuti in questa cartella.
-3. Vai su `Settings` > `Pages`.
-4. In `Build and deployment`, scegli `Deploy from a branch`.
-5. Seleziona branch `main` e cartella `/root`.
-6. Salva.
-7. Dopo qualche minuto GitHub ti darà il link pubblico.
+1. Carica tutti i file di questa cartella nel repository GitHub.
+2. Vai su `Settings` > `Pages`.
+3. In `Build and deployment`, scegli `Deploy from a branch`.
+4. Seleziona branch `main` e cartella `/root`.
+5. Salva.
+6. Attendi qualche minuto e poi apri il link pubblico.
 
-## Sottotitoli AI
+## Importante dopo l'aggiornamento
 
-La webapp può inviare un file audio alla API OpenAI per ricevere una trascrizione con segmenti temporali. Per sicurezza, non inserire mai una chiave API direttamente nel codice pubblicato online.
+Dopo aver sostituito i file su GitHub, apri la webapp e fai un aggiornamento forzato:
 
-Hai due modalità:
+- Windows: `CTRL + F5`
+- Mac: `CMD + SHIFT + R`
 
-### Modalità semplice
+Se hai installato la PWA, chiudila e riaprila. La nuova cache usa il nome `videomaker-studio-ai-v6`, quindi il service worker eliminerà la cache vecchia.
 
-Inserisci la tua chiave API nel campo della webapp. La chiave rimane nel browser e non viene salvata nei file GitHub. Puoi scegliere se salvarla nel localStorage del browser.
+## Esportazione MP4
 
-### Modalità più sicura
+Questa versione prova prima a creare MP4 direttamente dal browser. Questo metodo è più leggero e riduce il rischio di blocchi durante il caricamento di FFmpeg.wasm.
 
-Usa un proxy personale, ad esempio un Cloudflare Worker, e inserisci l'URL nel campo `Proxy URL opzionale`. In questo modo la chiave API resta nel worker e non viene mai mostrata al browser.
+Se il browser non supporta MP4 nativo, la webapp tenta la conversione con FFmpeg.wasm. Per video lunghi, molti effetti o FPS 60, la conversione può richiedere più memoria. In caso di errore:
 
-## Note importanti
+- usa Chrome o Edge aggiornato;
+- imposta FPS a 30;
+- prova con un video più corto;
+- in alternativa esporta in WEBM.
 
-- L'esportazione video viene fatta nel browser. Video lunghi o con molti effetti possono richiedere tempo.
-- La conversione MP4 carica FFmpeg.wasm da CDN. Serve connessione internet.
-- Su dispositivi poco potenti conviene esportare video brevi.
-- Se MP4 non funziona per limiti del browser, esporta in WEBM.
-- I file locali non vengono caricati su un server: restano nel browser, salvo l'uso volontario della funzione AI sottotitoli.
+## Sottotitoli AI con Gemini
+
+1. Apri la scheda `Sottotitoli AI`.
+2. Scegli `Gemini` come motore AI.
+3. Inserisci la tua chiave API Gemini.
+4. Scegli il modello, ad esempio `gemini-2.0-flash`.
+5. Carica una traccia audio nella timeline.
+6. Premi `Genera sottotitoli AI`.
+
+Con Gemini i tempi dei sottotitoli possono essere approssimati. Se vuoi timestamp più precisi, puoi usare OpenAI con i modelli di trascrizione.
+
+## Sicurezza chiavi API
+
+Non inserire mai una chiave API direttamente dentro i file pubblicati su GitHub. La webapp permette di inserirla solo dall'interfaccia. La modalità più sicura resta usare un proxy personale, ad esempio un Cloudflare Worker.
 
 ## File inclusi
 

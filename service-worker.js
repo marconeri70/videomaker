@@ -1,4 +1,4 @@
-const CACHE_NAME = 'videomaker-studio-ai-v5';
+const CACHE_NAME = 'videomaker-studio-ai-v6';
 const ASSETS = [
   './',
   './index.html',

@@ -49,6 +49,7 @@
     effectGrid: $('#effectGrid'),
     motionGrid: $('#motionGrid'),
     transitionGrid: $('#transitionGrid'),
+    aiProvider: $('#aiProvider'),
     apiKeyInput: $('#apiKeyInput'),
     proxyUrlInput: $('#proxyUrlInput'),
     transcribeModel: $('#transcribeModel'),
@@ -845,89 +846,203 @@
   }
   function stopAllAudio(){ audioPlayback.forEach(a => { a.pause(); try{a.currentTime=0;}catch(_){}}); }
 
-  async function exportWebM(returnBlob = false) {
-    if (!state.duration) return alert('Aggiungi almeno una clip prima di esportare.');
+  function getBestWebmMime() {
+    const candidates = [
+      'video/webm;codecs=vp9,opus',
+      'video/webm;codecs=vp8,opus',
+      'video/webm'
+    ];
+    return candidates.find(m => MediaRecorder.isTypeSupported(m)) || '';
+  }
+
+  function getBestNativeMp4Mime() {
+    const candidates = [
+      'video/mp4;codecs="avc1.42E01E,mp4a.40.2"',
+      'video/mp4;codecs="avc1.64001F,mp4a.40.2"',
+      'video/mp4;codecs="h264,aac"',
+      'video/mp4'
+    ];
+    return candidates.find(m => MediaRecorder.isTypeSupported(m)) || '';
+  }
+
+  async function renderProjectToBlob({ title = 'Esportazione', mimeType = '', videoBitsPerSecond = 7_000_000 } = {}) {
+    if (!state.duration) { alert('Aggiungi almeno una clip prima di esportare.'); return null; }
+    if (!mimeType) throw new Error('Formato video non supportato da questo browser.');
     stopPlayback();
-    showLoading('Esportazione WEBM', 'Preparazione...');
+    showLoading(title, 'Preparazione rendering...');
+    updateLoading(0, 'Preparazione canvas e audio...');
+
     const fps = state.fps;
     const stream = dom.canvas.captureStream(fps);
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     const dest = audioCtx.createMediaStreamDestination();
     const audioEls = [];
+
     for (const clip of state.clips.audio) {
-      const asset = getAsset(clip.assetId); if (!asset) continue;
-      const el = document.createElement('audio'); el.src = asset.url; el.preload = 'auto'; el.crossOrigin = 'anonymous';
+      const asset = getAsset(clip.assetId);
+      if (!asset) continue;
+      const el = document.createElement('audio');
+      el.src = asset.url;
+      el.preload = 'auto';
+      el.crossOrigin = 'anonymous';
       const src = audioCtx.createMediaElementSource(el);
       const gain = audioCtx.createGain();
       src.connect(gain).connect(dest);
       audioEls.push({ el, clip, gain });
     }
+
     dest.stream.getAudioTracks().forEach(track => stream.addTrack(track));
-    const mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus') ? 'video/webm;codecs=vp9,opus' : 'video/webm';
-    const recorder = new MediaRecorder(stream, { mimeType:mime, videoBitsPerSecond: 7_000_000 });
+
     const chunks = [];
-    recorder.ondataavailable = e => e.data.size && chunks.push(e.data);
-    const done = new Promise(resolve => recorder.onstop = () => resolve(new Blob(chunks, { type:'video/webm' })));
+    let recorder;
+    try {
+      recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond });
+    } catch (err) {
+      await audioCtx.close().catch(()=>{});
+      throw err;
+    }
+
+    recorder.ondataavailable = e => e.data && e.data.size && chunks.push(e.data);
+    const done = new Promise((resolve, reject) => {
+      recorder.onstop = () => resolve(new Blob(chunks, { type: mimeType.split(';')[0] || mimeType }));
+      recorder.onerror = e => reject(e.error || e);
+    });
+
     await audioCtx.resume();
     recorder.start(250);
-    const start = performance.now();
-    let lastSecond = -1;
+    const startClock = performance.now();
+    let lastProgress = -1;
+
     await new Promise(resolve => {
       const step = () => {
-        const t = Math.min(state.duration, (performance.now() - start) / 1000);
+        const t = Math.min(state.duration, (performance.now() - startClock) / 1000);
         state.currentTime = t;
+
         for (const item of audioEls) {
           const { el, clip, gain } = item;
           const active = t >= clip.start && t <= clip.start + clip.duration;
           if (active) {
             const target = (clip.trimStart || 0) + (t - clip.start);
-            if (Math.abs((el.currentTime || 0) - target) > .22) { try { el.currentTime = target; } catch(_){} }
-            gain.gain.value = clipVolumeAt(clip,t);
+            if (Math.abs((el.currentTime || 0) - target) > .22) {
+              try { el.currentTime = target; } catch (_) {}
+            }
+            gain.gain.value = clipVolumeAt(clip, t);
             if (el.paused) el.play().catch(()=>{});
-          } else if (!el.paused) el.pause();
+          } else if (!el.paused) {
+            el.pause();
+          }
         }
+
         renderPreview(t);
         const p = Math.round((t / state.duration) * 100);
-        if (Math.floor(t) !== lastSecond) { lastSecond = Math.floor(t); updateLoading(p, `Rendering ${fmtTime(t)} / ${fmtTime(state.duration)}`); }
-        if (t >= state.duration) resolve(); else requestAnimationFrame(step);
+        if (p !== lastProgress && (p % 2 === 0 || p === 100)) {
+          lastProgress = p;
+          updateLoading(p, `Rendering ${fmtTime(t)} / ${fmtTime(state.duration)}`);
+        }
+        if (t >= state.duration) resolve();
+        else requestAnimationFrame(step);
       };
       requestAnimationFrame(step);
     });
+
     recorder.stop();
-    audioEls.forEach(({el}) => el.pause());
+    audioEls.forEach(({ el }) => el.pause());
     await audioCtx.close().catch(()=>{});
-    const blob = await done;
-    hideLoading();
-    if (returnBlob) return blob;
-    downloadBlob(blob, `${safeFileName(state.projectName)}.webm`);
-    return blob;
+    return await done;
+  }
+
+  async function exportWebM(returnBlob = false) {
+    try {
+      const mimeType = getBestWebmMime();
+      const blob = await renderProjectToBlob({
+        title: 'Esportazione WEBM',
+        mimeType,
+        videoBitsPerSecond: 7_000_000
+      });
+      hideLoading();
+      if (!blob) return null;
+      if (returnBlob) return blob;
+      downloadBlob(blob, `${safeFileName(state.projectName)}.webm`);
+      return blob;
+    } catch (err) {
+      hideLoading();
+      console.error(err);
+      alert('Esportazione WEBM non riuscita. Prova con un video più corto o con FPS 30.');
+      return null;
+    }
   }
 
   async function exportMP4() {
+    stopPlayback();
+
+    // Primo tentativo: MP4 nativo del browser. Sui browser moderni evita FFmpeg.wasm,
+    // quindi richiede meno memoria ed è molto più stabile su GitHub Pages.
+    const nativeMp4 = getBestNativeMp4Mime();
+    if (nativeMp4) {
+      try {
+        const blob = await renderProjectToBlob({
+          title: 'Esportazione MP4',
+          mimeType: nativeMp4,
+          videoBitsPerSecond: 10_000_000
+        });
+        hideLoading();
+        if (!blob) return;
+        downloadBlob(blob, `${safeFileName(state.projectName)}.mp4`);
+        return;
+      } catch (err) {
+        console.warn('MP4 nativo non riuscito, provo con FFmpeg.wasm.', err);
+        hideLoading();
+      }
+    }
+
+    // Secondo tentativo: conversione WEBM -> MP4 con FFmpeg.wasm.
     try {
       const webm = await exportWebM(true);
       if (!webm) return;
       showLoading('Conversione MP4', 'Caricamento FFmpeg.wasm...');
-      const { FFmpeg } = await import('https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js');
-      const { fetchFile, toBlobURL } = await import('https://unpkg.com/@ffmpeg/util@0.12.1/dist/esm/index.js');
+      updateLoading(4, 'Caricamento motore video...');
+
+      const moduleBase = 'https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/esm';
+      const utilBase = 'https://unpkg.com/@ffmpeg/util@0.12.1/dist/esm';
+      const coreBase = 'https://unpkg.com/@ffmpeg/core@0.12.10/dist/umd';
+
+      const { FFmpeg } = await import(`${moduleBase}/index.js`);
+      const { fetchFile, toBlobURL } = await import(`${utilBase}/index.js`);
       const ffmpeg = new FFmpeg();
-      ffmpeg.on('progress', ({ progress, time }) => updateLoading(Math.round((progress || 0) * 100), `Conversione in corso ${Math.round((time || 0)/1000000)}s`));
-      const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.10/dist/esm';
-      await ffmpeg.load({
-        coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
-        wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
+
+      ffmpeg.on('progress', ({ progress, time }) => {
+        const p = Math.max(10, Math.min(98, Math.round((progress || 0) * 100)));
+        updateLoading(p, `Conversione in corso ${Math.round((time || 0) / 1000000)}s`);
       });
+      ffmpeg.on('log', ({ message }) => console.log('[ffmpeg]', message));
+
+      await ffmpeg.load({
+        coreURL: await toBlobURL(`${coreBase}/ffmpeg-core.js`, 'text/javascript'),
+        wasmURL: await toBlobURL(`${coreBase}/ffmpeg-core.wasm`, 'application/wasm')
+      });
+
+      updateLoading(18, 'Caricamento file WEBM...');
       await ffmpeg.writeFile('input.webm', await fetchFile(webm));
-      updateLoading(50, 'Compressione H.264...');
-      await ffmpeg.exec(['-i','input.webm','-c:v','libx264','-preset','veryfast','-pix_fmt','yuv420p','-c:a','aac','-b:a','192k','output.mp4']);
+      updateLoading(35, 'Compressione H.264 MP4...');
+      await ffmpeg.exec([
+        '-i', 'input.webm',
+        '-movflags', 'faststart',
+        '-c:v', 'libx264',
+        '-preset', 'ultrafast',
+        '-pix_fmt', 'yuv420p',
+        '-c:a', 'aac',
+        '-b:a', '160k',
+        'output.mp4'
+      ]);
       const data = await ffmpeg.readFile('output.mp4');
-      const mp4 = new Blob([data.buffer], { type:'video/mp4' });
+      const mp4 = new Blob([data.buffer], { type: 'video/mp4' });
       downloadBlob(mp4, `${safeFileName(state.projectName)}.mp4`);
+      updateLoading(100, 'MP4 pronto');
       hideLoading();
     } catch (err) {
       hideLoading();
       console.error(err);
-      alert('Conversione MP4 non riuscita. Il browser potrebbe bloccare FFmpeg.wasm o la memoria potrebbe non bastare. Puoi comunque esportare in WEBM.');
+      alert('Conversione MP4 non riuscita. Prova così: aggiorna la pagina con CTRL+F5, usa Chrome o Edge aggiornato, riduci FPS a 30 e video più corto. Puoi comunque esportare in WEBM.');
     }
   }
 
@@ -936,47 +1051,144 @@
     if (!audioClip) return alert('Carica prima una traccia audio.');
     const asset = getAsset(audioClip.assetId);
     if (!asset?.file) return alert('Per generare sottotitoli AI serve il file audio caricato in questa sessione.');
+
+    const provider = dom.aiProvider?.value || 'gemini';
     const apiKey = dom.apiKeyInput.value.trim();
     const proxyUrl = dom.proxyUrlInput.value.trim();
-    if (!apiKey && !proxyUrl) return alert('Inserisci la tua chiave API OpenAI oppure un proxy sicuro.');
-    if (dom.saveKeyCheck.checked && apiKey) localStorage.setItem('videomaker_openai_key', apiKey); else localStorage.removeItem('videomaker_openai_key');
-    showLoading('Sottotitoli AI', 'Invio audio per trascrizione...');
+    if (!apiKey && !proxyUrl) return alert('Inserisci la chiave API Gemini/OpenAI oppure un proxy sicuro.');
+
+    if (dom.saveKeyCheck.checked && apiKey) {
+      localStorage.setItem('videomaker_ai_key', apiKey);
+      localStorage.setItem('videomaker_ai_provider', provider);
+    } else {
+      localStorage.removeItem('videomaker_ai_key');
+      localStorage.removeItem('videomaker_ai_provider');
+    }
+
+    showLoading('Sottotitoli AI', provider === 'gemini' ? 'Invio audio a Gemini...' : 'Invio audio a OpenAI...');
     try {
-      const form = new FormData();
-      form.append('file', asset.file, asset.name || 'audio.mp3');
-      form.append('model', dom.transcribeModel.value || 'gpt-4o-mini-transcribe');
-      form.append('response_format', 'verbose_json');
-      form.append('timestamp_granularities[]', 'segment');
-      form.append('temperature', '0');
-      let res;
+      let segments = [];
+      let fallbackText = '';
+
       if (proxyUrl) {
-        res = await fetch(proxyUrl, { method:'POST', body: form });
+        const form = new FormData();
+        form.append('file', asset.file, asset.name || 'audio.mp3');
+        form.append('provider', provider);
+        form.append('model', dom.transcribeModel.value || (provider === 'gemini' ? 'gemini-2.0-flash' : 'gpt-4o-mini-transcribe'));
+        form.append('duration', String(audioClip.duration || state.duration || 0));
+        const res = await fetch(proxyUrl, { method:'POST', body: form });
+        if (!res.ok) throw new Error(await res.text());
+        const data = await res.json();
+        segments = normalizeSubtitleSegments(data.segments || data.words || [], audioClip);
+        fallbackText = data.text || data.transcript || '';
+      } else if (provider === 'gemini') {
+        const data = await transcribeWithGemini(apiKey, asset.file, audioClip);
+        segments = normalizeSubtitleSegments(data.segments || [], audioClip);
+        fallbackText = data.text || data.transcript || '';
       } else {
-        res = await fetch('https://api.openai.com/v1/audio/transcriptions', { method:'POST', headers:{ Authorization:`Bearer ${apiKey}` }, body: form });
+        const data = await transcribeWithOpenAI(apiKey, asset.file);
+        segments = normalizeSubtitleSegments(data.segments || data.words || [], audioClip);
+        fallbackText = data.text || '';
       }
-      if (!res.ok) throw new Error(await res.text());
-      const data = await res.json();
+
       pushHistory();
       state.clips.subtitles.length = 0;
-      const segments = data.segments || data.words || [];
       if (segments.length) {
-        for (const seg of segments) {
-          const text = (seg.text || seg.word || '').trim();
-          if (!text) continue;
-          const start = audioClip.start + Math.max(0, (seg.start || 0) - (audioClip.trimStart || 0));
-          const end = audioClip.start + Math.max(start + .6, (seg.end || (seg.start || 0) + 2) - (audioClip.trimStart || 0));
-          addSubtitleClip(text, start, clamp(end - start, .5, 8));
-        }
-      } else if (data.text) {
-        createDraftSubtitles(data.text);
+        for (const seg of segments) addSubtitleClip(seg.text, seg.start, seg.duration);
+      } else if (fallbackText) {
+        createDraftSubtitles(fallbackText);
+      } else {
+        throw new Error('Nessun sottotitolo ricevuto dalla AI.');
       }
       hideLoading();
       renderAll();
     } catch (err) {
       hideLoading();
       console.error(err);
-      alert('Non sono riuscito a generare i sottotitoli AI. Controlla chiave API, proxy, rete o formato audio.');
+      alert('Non sono riuscito a generare i sottotitoli AI. Controlla chiave API, modello, rete o formato audio. Con Gemini i tempi possono essere approssimati; con OpenAI spesso sono più precisi.');
     }
+  }
+
+  async function transcribeWithOpenAI(apiKey, file) {
+    const form = new FormData();
+    form.append('file', file, file.name || 'audio.mp3');
+    form.append('model', dom.transcribeModel.value?.startsWith('gpt') || dom.transcribeModel.value === 'whisper-1' ? dom.transcribeModel.value : 'gpt-4o-mini-transcribe');
+    form.append('response_format', 'verbose_json');
+    form.append('timestamp_granularities[]', 'segment');
+    form.append('temperature', '0');
+    const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+      method:'POST',
+      headers:{ Authorization:`Bearer ${apiKey}` },
+      body: form
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return await res.json();
+  }
+
+  async function transcribeWithGemini(apiKey, file, audioClip) {
+    const model = (dom.transcribeModel.value || 'gemini-2.0-flash').startsWith('gemini') ? dom.transcribeModel.value : 'gemini-2.0-flash';
+    const base64 = await readFileAsBase64(file);
+    const duration = Math.max(1, audioClip.duration || state.duration || 30);
+    const prompt = `Analizza questo audio e crea sottotitoli brevi in italiano. Rispondi solo con JSON valido, senza markdown. Schema esatto: {"segments":[{"start":0.0,"end":2.4,"text":"testo"}],"text":"trascrizione completa"}. Durata audio circa ${duration.toFixed(1)} secondi. Usa segmenti da 1 a 4 secondi, testi brevi e leggibili. Se non sei sicuro dei timestamp, distribuisci i segmenti in modo realistico lungo tutta la durata.`;
+
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`, {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json' },
+      body: JSON.stringify({
+        contents: [{
+          role: 'user',
+          parts: [
+            { text: prompt },
+            { inline_data: { mime_type: file.type || 'audio/mpeg', data: base64 } }
+          ]
+        }],
+        generationConfig: {
+          temperature: 0.1,
+          responseMimeType: 'application/json'
+        }
+      })
+    });
+    if (!res.ok) throw new Error(await res.text());
+    const data = await res.json();
+    const raw = data?.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('\n') || '';
+    return parseAiJson(raw, duration);
+  }
+
+  function parseAiJson(raw, duration) {
+    const cleaned = String(raw || '').replace(/^```(?:json)?/i, '').replace(/```$/i, '').trim();
+    try {
+      const parsed = JSON.parse(cleaned);
+      if (Array.isArray(parsed)) return { segments: parsed, text: parsed.map(s => s.text).filter(Boolean).join(' ') };
+      return parsed;
+    } catch (_) {
+      const text = cleaned.replace(/[{}\[\]"]/g, ' ').replace(/\s+/g, ' ').trim();
+      const chunks = splitCaptionText(text, 42);
+      const step = duration / Math.max(1, chunks.length);
+      return { text, segments: chunks.map((chunk, i) => ({ start: i * step, end: Math.min(duration, (i + .92) * step), text: chunk })) };
+    }
+  }
+
+  function normalizeSubtitleSegments(items, audioClip) {
+    const out = [];
+    for (const item of items || []) {
+      const text = String(item.text || item.word || item.caption || '').trim();
+      if (!text) continue;
+      const rawStart = Number(item.start ?? item.startTime ?? 0);
+      const rawEnd = Number(item.end ?? item.endTime ?? (rawStart + 2));
+      const start = audioClip.start + Math.max(0, rawStart - (audioClip.trimStart || 0));
+      const end = audioClip.start + Math.max(start + .6, rawEnd - (audioClip.trimStart || 0));
+      out.push({ text, start, duration: clamp(end - start, .5, 8) });
+    }
+    return out;
+  }
+
+  function readFileAsBase64(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
   }
 
   function createDraftSubtitles(text = dom.subtitleDraftText.value) {
@@ -1154,7 +1366,9 @@
   function init() {
     initEvents();
     renderPresets();
-    const savedKey = localStorage.getItem('videomaker_openai_key');
+    const savedKey = localStorage.getItem('videomaker_ai_key') || localStorage.getItem('videomaker_openai_key');
+    const savedProvider = localStorage.getItem('videomaker_ai_provider');
+    if (savedProvider && dom.aiProvider) dom.aiProvider.value = savedProvider;
     if (savedKey) { dom.apiKeyInput.value = savedKey; dom.saveKeyCheck.checked = true; }
     loadAutosave();
     seedDemo();
