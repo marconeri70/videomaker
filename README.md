@@ -12,6 +12,19 @@ Webapp statica pronta per GitHub Pages per creare video da foto, video, audio, t
 - Sottotitoli AI compatibili sia con Gemini sia con OpenAI.
 - Campo “Motore AI” per scegliere Gemini o OpenAI.
 
+## Novità V3 - Messaggi intro/finale modificabili
+
+Questa versione rimuove i messaggi demo automatici dai nuovi progetti e aggiunge una scheda **Intro/Finale**. Da lì puoi:
+
+- attivare o disattivare il messaggio iniziale;
+- modificare titolo e sottotitolo iniziale;
+- attivare o disattivare il messaggio finale;
+- modificare titolo e sottotitolo finale;
+- scegliere la durata di intro e finale;
+- rimuovere i vecchi messaggi pubblicitari/demo già presenti in un progetto salvato.
+
+I messaggi vengono inseriti nelle corsie **Testi** e **Sottotitoli**, quindi possono essere trascinati, ridimensionati e modificati anche dalla timeline.
+
 ## Funzioni principali
 
 - Interfaccia professionale tipo mini editor video.

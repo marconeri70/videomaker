@@ -51,6 +51,7 @@
           <button class="tab" data-tab="effects">Effetti</button>
           <button class="tab" data-tab="transitions">Transizioni</button>
           <button class="tab" data-tab="subtitles">Sottotitoli AI</button>
+          <button class="tab" data-tab="branding">Intro/Finale</button>
         </nav>
 
         <section id="mediaTab" class="panel-tab active">
@@ -66,6 +67,7 @@
             <button id="addSubtitleBtn" class="btn secondary">+ Sottotitolo</button>
             <button id="fitPhotosBtn" class="btn ghost">Adatta foto all’audio</button>
             <button id="autoBeatBtn" class="btn ghost">Taglio ritmico</button>
+            <button id="openBrandingBtn" class="btn ghost">Messaggi intro/finale</button>
           </div>
           <h2>Libreria</h2>
           <div id="assetLibrary" class="asset-library empty-state">Nessun file caricato</div>
@@ -131,6 +133,43 @@
           </label>
           <textarea id="subtitleDraftText" class="textarea" rows="6" placeholder="Incolla qui un testo se vuoi creare sottotitoli automatici distribuiti sulla durata dell'audio..."></textarea>
           <div class="hint">La chiave non viene inserita nel codice della webapp. Se pubblichi online, non mettere mai una chiave fissa nei file.</div>
+        </section>
+
+        <section id="brandingTab" class="panel-tab">
+          <div class="panel-heading">
+            <h2>Messaggi intro e finale</h2>
+            <p>Qui puoi togliere o modificare i messaggi che compaiono all'inizio e alla fine del video.</p>
+          </div>
+
+          <div class="branding-box">
+            <label class="checkline"><input id="introEnable" type="checkbox" /> Attiva messaggio iniziale</label>
+            <label class="control">Titolo iniziale
+              <input id="introTitleInput" type="text" placeholder="Es. Titolo del video" />
+            </label>
+            <label class="control">Sottotitolo iniziale
+              <textarea id="introSubtitleInput" class="textarea small-textarea" rows="3" placeholder="Es. Una breve descrizione"></textarea>
+            </label>
+            <label class="control">Durata intro, in secondi
+              <input id="introDurationInput" type="number" min="0.5" max="20" step="0.1" />
+            </label>
+          </div>
+
+          <div class="branding-box">
+            <label class="checkline"><input id="outroEnable" type="checkbox" /> Attiva messaggio finale</label>
+            <label class="control">Titolo finale
+              <input id="outroTitleInput" type="text" placeholder="Es. Seguimi per altri video" />
+            </label>
+            <label class="control">Sottotitolo finale
+              <textarea id="outroSubtitleInput" class="textarea small-textarea" rows="3" placeholder="Es. Commenta e condividi"></textarea>
+            </label>
+            <label class="control">Durata finale, in secondi
+              <input id="outroDurationInput" type="number" min="0.5" max="20" step="0.1" />
+            </label>
+          </div>
+
+          <button id="applyBrandingBtn" class="btn primary full">Applica / aggiorna messaggi</button>
+          <button id="removeBrandingBtn" class="btn danger full">Rimuovi messaggi pubblicitari</button>
+          <div class="hint">I messaggi creati vengono inseriti nelle corsie Testi e Sottotitoli. Dopo averli applicati puoi anche trascinarli, allungarli o modificarli direttamente dalla timeline.</div>
         </section>
       </aside>
 

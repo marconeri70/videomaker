@@ -56,6 +56,14 @@
     saveKeyCheck: $('#saveKeyCheck'),
     subtitleDraftText: $('#subtitleDraftText'),
     srtInput: $('#srtInput'),
+    introEnable: $('#introEnable'),
+    introTitleInput: $('#introTitleInput'),
+    introSubtitleInput: $('#introSubtitleInput'),
+    introDurationInput: $('#introDurationInput'),
+    outroEnable: $('#outroEnable'),
+    outroTitleInput: $('#outroTitleInput'),
+    outroSubtitleInput: $('#outroSubtitleInput'),
+    outroDurationInput: $('#outroDurationInput'),
   };
   const ctx = dom.canvas.getContext('2d', { alpha: false });
 
@@ -108,10 +116,24 @@
     { id:'swirl', name:'Swirl', desc:'Rotazione morbida' },
   ];
 
+  const DEFAULT_BRANDING = {
+    introEnabled: false,
+    introTitle: 'VideoMaker Studio AI',
+    introSubtitle: 'Creato con VideoMaker',
+    introDuration: 3,
+    outroEnabled: false,
+    outroTitle: 'Seguimi per altri video',
+    outroSubtitle: 'Video creato con VideoMaker Studio AI',
+    outroDuration: 3,
+  };
+
+  const BRANDING_ROLES = new Set(['intro-title','intro-subtitle','outro-title','outro-subtitle']);
+
   const state = {
     projectName: 'Nuovo progetto',
     assets: [],
     clips: { media: [], text: [], subtitles: [], audio: [] },
+    branding: { ...DEFAULT_BRANDING },
     selected: null,
     currentTime: 0,
     duration: 0,
@@ -141,11 +163,12 @@
 
   function serializeProject() {
     return {
-      version: 5,
+      version: 7,
       projectName: state.projectName,
       format: state.format,
       fps: state.fps,
       pps: state.pps,
+      branding: state.branding,
       assets: state.assets.map(a => ({ id:a.id, name:a.name, type:a.type, duration:a.duration, url:a.url, thumb:a.thumb, waveform:a.waveform, note:'I file locali vengono riaperti solo nella sessione corrente.' })),
       clips: state.clips,
     };
@@ -157,7 +180,9 @@
     state.fps = Number(data.fps || 30);
     state.pps = Number(data.pps || 95);
     state.assets = (data.assets || []).map(a => ({ ...a, file:null }));
-    state.clips = data.clips || { media: [], text: [], subtitles: [], audio: [] };
+    state.clips = { media: [], text: [], subtitles: [], audio: [], ...(data.clips || {}) };
+    state.branding = { ...DEFAULT_BRANDING, ...(data.branding || {}) };
+    syncBrandingInputs();
     state.selected = null;
     state.currentTime = 0;
     applyFormat();
@@ -616,10 +641,12 @@
     grd.addColorStop(0,'#050713'); grd.addColorStop(1,'#11162f');
     ctx.fillStyle = grd; ctx.fillRect(0,0,w,h);
     const active = activeClips('media', t).at(-1);
+    const activeText = activeClips('text', t);
+    const activeSubs = activeClips('subtitles', t);
     if (active) drawMediaClip(active, t, w, h);
-    else drawEmptyPreview(w,h);
-    for (const text of activeClips('text', t)) drawTextClip(text, t, w, h);
-    for (const sub of activeClips('subtitles', t)) drawTextClip(sub, t, w, h, true);
+    else if (!state.duration && !activeText.length && !activeSubs.length) drawEmptyPreview(w,h);
+    for (const text of activeText) drawTextClip(text, t, w, h);
+    for (const sub of activeSubs) drawTextClip(sub, t, w, h, true);
     ctx.restore();
     updatePlayhead();
   }
@@ -1249,6 +1276,101 @@
     renderAll();
   }
 
+  function isBrandingClip(clip, includeLegacy = false) {
+    if (!clip) return false;
+    if (clip.branding || BRANDING_ROLES.has(clip.role)) return true;
+    if (!includeLegacy) return false;
+    const text = String(clip.text || '').trim().toLowerCase();
+    const legacy = [
+      'videomaker studio ai',
+      'carica i tuoi file e crea un video professionale',
+      'creato con videomaker',
+      'video creato con videomaker studio ai'
+    ];
+    return clip.start <= 4 && legacy.includes(text);
+  }
+
+  function readBrandingInputs() {
+    if (!dom.introEnable) return;
+    state.branding = {
+      introEnabled: !!dom.introEnable.checked,
+      introTitle: dom.introTitleInput.value || '',
+      introSubtitle: dom.introSubtitleInput.value || '',
+      introDuration: clamp(Number(dom.introDurationInput.value || 3), .5, 20),
+      outroEnabled: !!dom.outroEnable.checked,
+      outroTitle: dom.outroTitleInput.value || '',
+      outroSubtitle: dom.outroSubtitleInput.value || '',
+      outroDuration: clamp(Number(dom.outroDurationInput.value || 3), .5, 20),
+    };
+  }
+
+  function syncBrandingInputs() {
+    if (!dom.introEnable) return;
+    const b = { ...DEFAULT_BRANDING, ...(state.branding || {}) };
+    dom.introEnable.checked = !!b.introEnabled;
+    dom.introTitleInput.value = b.introTitle || '';
+    dom.introSubtitleInput.value = b.introSubtitle || '';
+    dom.introDurationInput.value = b.introDuration || 3;
+    dom.outroEnable.checked = !!b.outroEnabled;
+    dom.outroTitleInput.value = b.outroTitle || '';
+    dom.outroSubtitleInput.value = b.outroSubtitle || '';
+    dom.outroDurationInput.value = b.outroDuration || 3;
+  }
+
+  function removeBrandingClips(includeLegacy = false) {
+    state.clips.text = state.clips.text.filter(c => !isBrandingClip(c, includeLegacy));
+    state.clips.subtitles = state.clips.subtitles.filter(c => !isBrandingClip(c, includeLegacy));
+  }
+
+  function contentEndWithoutBranding() {
+    const all = [...state.clips.media, ...state.clips.audio, ...state.clips.text, ...state.clips.subtitles]
+      .filter(c => !isBrandingClip(c, true));
+    return Math.max(0, ...all.map(c => c.start + c.duration));
+  }
+
+  function brandingTextClip(role, text, start, duration, y, size = 70) {
+    return {
+      id: uid('clip'), track:'text', kind:'text', label: role.includes('intro') ? 'Intro modificabile' : 'Finale modificabile',
+      role, branding:true, text, start, duration, x:.5, y, size, color:'#ffffff',
+      background:'rgba(0,0,0,.28)', font:'Inter', weight:900, animation:'glow', align:'center', shadow:true
+    };
+  }
+
+  function brandingSubtitleClip(role, text, start, duration, y = .62) {
+    return {
+      id: uid('clip'), track:'subtitles', kind:'subtitle', label: role.includes('intro') ? 'Intro sottotitolo' : 'Finale sottotitolo',
+      role, branding:true, text, start, duration, x:.5, y, size:42, color:'#ffffff',
+      background:'rgba(0,0,0,.60)', font:'Inter', weight:800, animation:'pop', align:'center', shadow:true
+    };
+  }
+
+  function applyBrandingClips() {
+    pushHistory();
+    readBrandingInputs();
+    removeBrandingClips(true);
+    const b = state.branding;
+    if (b.introEnabled) {
+      const d = clamp(Number(b.introDuration || 3), .5, 20);
+      if ((b.introTitle || '').trim()) state.clips.text.push(brandingTextClip('intro-title', b.introTitle.trim(), 0, d, .42, 74));
+      if ((b.introSubtitle || '').trim()) state.clips.subtitles.push(brandingSubtitleClip('intro-subtitle', b.introSubtitle.trim(), .25, Math.max(.25, d - .35), .62));
+    }
+    if (b.outroEnabled) {
+      const d = clamp(Number(b.outroDuration || 3), .5, 20);
+      const start = contentEndWithoutBranding();
+      if ((b.outroTitle || '').trim()) state.clips.text.push(brandingTextClip('outro-title', b.outroTitle.trim(), start, d, .42, 70));
+      if ((b.outroSubtitle || '').trim()) state.clips.subtitles.push(brandingSubtitleClip('outro-subtitle', b.outroSubtitle.trim(), start + .25, Math.max(.25, d - .35), .62));
+    }
+    renderAll();
+  }
+
+  function removeBrandingAction() {
+    pushHistory();
+    removeBrandingClips(true);
+    state.branding = { ...state.branding, introEnabled:false, outroEnabled:false };
+    syncBrandingInputs();
+    renderAll();
+  }
+
   function deleteSelected() {
     const found = selectedClip(); if (!found) return;
     pushHistory();
@@ -1315,6 +1437,18 @@
     $('#addTrackSubtitleBtn').addEventListener('click', () => { pushHistory(); addSubtitleClip(); renderAll(); });
     $('#fitPhotosBtn').addEventListener('click', fitPhotosToAudio);
     $('#autoBeatBtn').addEventListener('click', autoBeatCut);
+    $('#openBrandingBtn')?.addEventListener('click', () => {
+      $$('.tab').forEach(t => t.classList.remove('active'));
+      $('[data-tab="branding"]')?.classList.add('active');
+      $$('.panel-tab').forEach(p => p.classList.remove('active'));
+      $('#brandingTab')?.classList.add('active');
+    });
+    $('#applyBrandingBtn')?.addEventListener('click', applyBrandingClips);
+    $('#removeBrandingBtn')?.addEventListener('click', removeBrandingAction);
+    [dom.introEnable, dom.introTitleInput, dom.introSubtitleInput, dom.introDurationInput, dom.outroEnable, dom.outroTitleInput, dom.outroSubtitleInput, dom.outroDurationInput].filter(Boolean).forEach(el => {
+      el.addEventListener('input', () => { readBrandingInputs(); saveAutosave(); });
+      el.addEventListener('change', () => { readBrandingInputs(); saveAutosave(); });
+    });
     $('#deleteSelectedBtn').addEventListener('click', deleteSelected);
     dom.formatSelect.addEventListener('change', e => { pushHistory(); state.format = e.target.value; applyFormat(); saveAutosave(); });
     dom.fpsSelect.addEventListener('change', e => { state.fps = Number(e.target.value); saveAutosave(); });
@@ -1356,11 +1490,7 @@
   }
 
   function seedDemo() {
-    if (state.clips.media.length) return;
-    addTextClip();
-    const t = state.clips.text[0];
-    t.text = 'VideoMaker Studio AI'; t.start = 0; t.duration = 3.2; t.y = .42; t.size = 74; t.animation = 'glow'; t.background = 'rgba(124,92,255,.28)';
-    addSubtitleClip('Carica i tuoi file e crea un video professionale', .4, 2.8);
+    // Demo disattivata: i nuovi progetti partono senza messaggi pubblicitari.
   }
 
   function init() {
@@ -1371,6 +1501,7 @@
     if (savedProvider && dom.aiProvider) dom.aiProvider.value = savedProvider;
     if (savedKey) { dom.apiKeyInput.value = savedKey; dom.saveKeyCheck.checked = true; }
     loadAutosave();
+    syncBrandingInputs();
     seedDemo();
     applyFormat();
     pushHistory();
