@@ -75,8 +75,8 @@
 
         <section id="effectsTab" class="panel-tab">
           <div class="panel-heading">
-            <h2>Effetti video</h2>
-            <p>Seleziona una clip foto/video e applica un look.</p>
+            <h2>Effetti</h2>
+            <p>Ora i filtri si applicano anche a foto, video, testi e sottotitoli. Seleziona un elemento e scegli il look.</p>
           </div>
           <div id="effectGrid" class="preset-grid"></div>
           <div class="panel-heading compact">
@@ -167,6 +167,58 @@
             </label>
           </div>
 
+          <div class="branding-box style-box">
+            <h3>Stile visivo messaggi</h3>
+            <p>Seleziona uno stile pronto oppure modifica font e colori in modo più visuale.</p>
+            <div class="brand-style-grid">
+              <button type="button" class="brand-style active" data-brand-style="modern"><span class="style-preview modern">Aa</span><b>Modern</b></button>
+              <button type="button" class="brand-style" data-brand-style="cinematic"><span class="style-preview cinematic">Aa</span><b>Cinema</b></button>
+              <button type="button" class="brand-style" data-brand-style="neon"><span class="style-preview neon">Aa</span><b>Neon</b></button>
+              <button type="button" class="brand-style" data-brand-style="news"><span class="style-preview news">Aa</span><b>News</b></button>
+              <button type="button" class="brand-style" data-brand-style="elegant"><span class="style-preview elegant">Aa</span><b>Elegante</b></button>
+              <button type="button" class="brand-style" data-brand-style="minimal"><span class="style-preview minimal">Aa</span><b>Minimal</b></button>
+            </div>
+
+            <div class="inline2">
+              <label class="control">Font
+                <select id="brandingFontSelect">
+                  <option value="Inter">Inter moderno</option>
+                  <option value="Arial Black">Arial Black forte</option>
+                  <option value="Impact">Impact social</option>
+                  <option value="Georgia">Georgia elegante</option>
+                  <option value="Trebuchet MS">Trebuchet morbido</option>
+                  <option value="Courier New">Courier digitale</option>
+                </select>
+              </label>
+              <label class="control">Animazione
+                <select id="brandingAnimationSelect">
+                  <option value="glow">Glow</option>
+                  <option value="pop">Pop</option>
+                  <option value="rise">Rise</option>
+                  <option value="bounce">Bounce</option>
+                  <option value="typewriter">Typewriter</option>
+                </select>
+              </label>
+            </div>
+
+            <label class="control">Colore titolo
+              <div class="color-row"><input id="brandingTitleColorText" type="text" value="#ffffff"><input id="brandingTitleColor" type="color" value="#ffffff"></div>
+            </label>
+            <label class="control">Colore sottotitolo
+              <div class="color-row"><input id="brandingSubtitleColorText" type="text" value="#ffffff"><input id="brandingSubtitleColor" type="color" value="#ffffff"></div>
+            </label>
+            <label class="control">Sfondo box testo
+              <div class="color-row"><input id="brandingBackgroundText" type="text" value="rgba(0,0,0,.45)"><input id="brandingBackgroundColor" type="color" value="#000000"></div>
+            </label>
+            <div class="brand-palette-row" aria-label="Palette colori rapide">
+              <button type="button" class="brand-color-chip" style="--c1:#ffffff;--c2:#00e0ff;--c3:#111827" data-title="#ffffff" data-subtitle="#00e0ff" data-bg="rgba(0,0,0,.48)"></button>
+              <button type="button" class="brand-color-chip" style="--c1:#fff7d6;--c2:#ff3f8f;--c3:#240018" data-title="#fff7d6" data-subtitle="#ff3f8f" data-bg="rgba(36,0,24,.58)"></button>
+              <button type="button" class="brand-color-chip" style="--c1:#111111;--c2:#d6002a;--c3:#ffffff" data-title="#ffffff" data-subtitle="#ffffff" data-bg="rgba(214,0,42,.82)"></button>
+              <button type="button" class="brand-color-chip" style="--c1:#f5efe4;--c2:#d6a85f;--c3:#22180f" data-title="#f5efe4" data-subtitle="#d6a85f" data-bg="rgba(34,24,15,.68)"></button>
+              <button type="button" class="brand-color-chip" style="--c1:#111827;--c2:#111827;--c3:#f8fafc" data-title="#111827" data-subtitle="#111827" data-bg="rgba(248,250,252,.84)"></button>
+            </div>
+          </div>
+
           <button id="applyBrandingBtn" class="btn primary full">Applica / aggiorna messaggi</button>
           <button id="removeBrandingBtn" class="btn danger full">Rimuovi messaggi pubblicitari</button>
           <div class="hint">I messaggi creati vengono inseriti nelle corsie Testi e Sottotitoli. Dopo averli applicati puoi anche trascinarli, allungarli o modificarli direttamente dalla timeline.</div>
@@ -188,6 +240,7 @@
 
         <div class="preview-wrap glass">
           <canvas id="previewCanvas" width="1080" height="1920"></canvas>
+          <div id="previewOverlay" class="preview-overlay" aria-label="Elementi trascinabili in anteprima"></div>
           <div id="safeArea" class="safe-area"></div>
           <div id="loadingOverlay" class="loading-overlay hidden">
             <div class="spinner"></div>

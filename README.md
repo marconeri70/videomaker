@@ -2,13 +2,21 @@
 
 Webapp statica pronta per GitHub Pages per creare video da foto, video, audio, testi, effetti, transizioni e sottotitoli AI.
 
-## Novità di questa versione
+## Novità V4 - Editor più professionale
+
+- I filtri ora si applicano anche a **testi** e **sottotitoli**, non solo a foto/video.
+- Puoi cliccare direttamente sull'anteprima e trascinare **testi, sottotitoli, foto e video** per riposizionarli.
+- I media hanno controlli di posizione X/Y e scala nell'Inspector.
+- La sezione **Intro/Finale** ha stili grafici pronti, scelta font, animazione, colori titolo/sottotitolo e palette visuali.
+- La console è stata resa più responsive per cellulare, tablet e schermo dimezzato su PC.
+- Cache PWA aggiornata: `videomaker-studio-ai-v8`.
+
+## Novità versioni precedenti
 
 - Esportazione MP4 più stabile:
   - prima prova l'esportazione MP4 nativa del browser;
   - se non disponibile, prova la conversione WEBM → MP4 con FFmpeg.wasm;
   - messaggi di errore più chiari.
-- Cache PWA aggiornata: `videomaker-studio-ai-v6`.
 - Sottotitoli AI compatibili sia con Gemini sia con OpenAI.
 - Campo “Motore AI” per scegliere Gemini o OpenAI.
 
@@ -66,7 +74,7 @@ Dopo aver sostituito i file su GitHub, apri la webapp e fai un aggiornamento for
 - Windows: `CTRL + F5`
 - Mac: `CMD + SHIFT + R`
 
-Se hai installato la PWA, chiudila e riaprila. La nuova cache usa il nome `videomaker-studio-ai-v6`, quindi il service worker eliminerà la cache vecchia.
+Se hai installato la PWA, chiudila e riaprila. La nuova cache usa il nome `videomaker-studio-ai-v8`, quindi il service worker eliminerà la cache vecchia.
 
 ## Esportazione MP4
 
@@ -103,3 +111,14 @@ Non inserire mai una chiave API direttamente dentro i file pubblicati su GitHub.
 - `service-worker.js`
 - `icon.svg`
 - `README.md`
+
+## Aggiornamento V5 - anteprima e trascinamento
+
+Questa versione corregge la visualizzazione dell'anteprima e aggiunge un livello interattivo sopra il canvas:
+
+- l'anteprima mantiene sempre il formato corretto senza deformarsi o tagliarsi;
+- testi e sottotitoli attivi compaiono anche come elementi cliccabili sopra l'anteprima;
+- testi e sottotitoli possono essere trascinati direttamente nell'anteprima con mouse o dito;
+- foto e video selezionati possono essere spostati cliccando e trascinando nell'anteprima;
+- migliorata la risposta dell'interfaccia quando lo schermo viene dimezzato o usato da cellulare;
+- cache PWA aggiornata alla versione V9.
