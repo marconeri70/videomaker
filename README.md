@@ -1,6 +1,14 @@
-# VideoMaker Studio AI Pro V7
+# VideoMaker Studio AI Pro V8
 
 Webapp statica pronta per GitHub Pages per creare video da foto, video, audio, testi, effetti, transizioni e sottotitoli AI.
+
+
+## Novità V8 - Fix testi e sottotitoli doppi
+
+- Nell’anteprima testi e sottotitoli non vengono più disegnati due volte.
+- L’anteprima usa elementi cliccabili sopra il canvas, quindi testi e sottotitoli restano trascinabili.
+- Durante l’esportazione WEBM/MP4 testi e sottotitoli vengono invece inseriti nel canvas, così compaiono correttamente nel video finale.
+- Cache PWA aggiornata: `videomaker-studio-ai-v12-preview-no-duplicates`.
 
 ## Novità V4 - Editor più professionale
 
@@ -74,7 +82,7 @@ Dopo aver sostituito i file su GitHub, apri la webapp e fai un aggiornamento for
 - Windows: `CTRL + F5`
 - Mac: `CMD + SHIFT + R`
 
-Se hai installato la PWA, chiudila e riaprila. La nuova cache usa il nome `videomaker-studio-ai-v8`, quindi il service worker eliminerà la cache vecchia.
+Se hai installato la PWA, chiudila e riaprila. La nuova cache usa il nome `videomaker-studio-ai-v12-preview-no-duplicates`, quindi il service worker eliminerà la cache vecchia.
 
 ## Esportazione MP4
 

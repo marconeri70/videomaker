@@ -724,7 +724,15 @@
     return el;
   }
 
-  function renderPreview(t = state.currentTime) {
+  function renderPreview(t = state.currentTime, options = {}) {
+    // IMPORTANTE:
+    // Nell'anteprima normale testi e sottotitoli vengono mostrati come veri elementi HTML
+    // sopra il canvas, così sono cliccabili e trascinabili. Se li disegnassimo anche nel
+    // canvas si vedrebbero doppi. Durante l'esportazione, invece, li disegniamo nel canvas
+    // perché MediaRecorder registra solo il canvas e non gli elementi HTML sovrapposti.
+    const renderTextInCanvas = options.renderTextInCanvas === true;
+    const updateOverlay = options.updateOverlay !== false;
+
     const w = dom.canvas.width, h = dom.canvas.height;
     state.hitboxes = [];
     ctx.save();
@@ -740,11 +748,16 @@
       drawMediaClip(active, t, w, h);
       state.hitboxes.push({ id:active.id, track:'media', x:0, y:0, w, h, label:'media' });
     } else if (!state.duration && !activeText.length && !activeSubs.length) drawEmptyPreview(w,h);
-    for (const text of activeText) drawTextClip(text, t, w, h);
-    for (const sub of activeSubs) drawTextClip(sub, t, w, h, true);
+
+    if (renderTextInCanvas) {
+      for (const text of activeText) drawTextClip(text, t, w, h);
+      for (const sub of activeSubs) drawTextClip(sub, t, w, h, true);
+    }
+
     ctx.restore();
     updatePlayhead();
-    renderPreviewOverlay();
+    if (updateOverlay) renderPreviewOverlay();
+    else if (dom.previewOverlay) dom.previewOverlay.innerHTML = '';
   }
 
   function renderPreviewOverlay() {
@@ -1183,7 +1196,7 @@
           }
         }
 
-        renderPreview(t);
+        renderPreview(t, { renderTextInCanvas: true, updateOverlay: false });
         const p = Math.round((t / state.duration) * 100);
         if (p !== lastProgress && (p % 2 === 0 || p === 100)) {
           lastProgress = p;
@@ -1198,7 +1211,9 @@
     recorder.stop();
     audioEls.forEach(({ el }) => el.pause());
     await audioCtx.close().catch(()=>{});
-    return await done;
+    const blob = await done;
+    renderPreview(state.currentTime);
+    return blob;
   }
 
   async function exportWebM(returnBlob = false) {

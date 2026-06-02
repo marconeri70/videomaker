@@ -1,4 +1,4 @@
-const CACHE_NAME = 'videomaker-studio-ai-v11-gemini-retry';
+const CACHE_NAME = 'videomaker-studio-ai-v12-preview-no-duplicates';
 const ASSETS = [
   './',
   './index.html',
