@@ -211,3 +211,104 @@ body.resizing-panels, body.resizing-panels *{cursor:col-resize!important;user-se
 @media(max-width:1180px){
   .col-resizer{display:none!important}
 }
+
+
+/* V10 - timeline ridimensionabile, layout compatto editabile e drag più stabile */
+:root{
+  --timeline-height:300px;
+  --left-panel-width:330px;
+  --right-panel-width:340px;
+}
+.timeline-panel{
+  position:relative;
+  min-height:180px;
+  max-height:52vh;
+  overflow:hidden;
+  grid-template-rows:48px minmax(0,1fr)!important;
+}
+.timeline-resizer{
+  position:absolute;
+  left:18px;
+  right:18px;
+  top:-7px;
+  height:14px;
+  z-index:60;
+  cursor:ns-resize;
+  touch-action:none;
+  border-radius:999px;
+}
+.timeline-resizer::before{
+  content:"";
+  position:absolute;
+  left:50%;
+  top:3px;
+  width:92px;
+  height:5px;
+  transform:translateX(-50%);
+  border-radius:99px;
+  background:linear-gradient(90deg,var(--primary),var(--primary-2));
+  opacity:.72;
+  box-shadow:0 0 18px rgba(0,224,255,.28);
+}
+.timeline-resizer:hover::before,.timeline-resizer.active::before{opacity:1;height:7px;top:2px}
+body.resizing-timeline, body.resizing-timeline *{cursor:ns-resize!important;user-select:none!important}
+.timeline-scroll{
+  min-height:0;
+  height:100%;
+  overscroll-behavior:contain;
+  scrollbar-gutter:stable both-edges;
+  touch-action:pan-x pan-y;
+}
+.timeline-scroll.dragging-timeline{touch-action:none;cursor:grabbing}
+.track-lane{min-width:100%;touch-action:pan-x}
+.clip{touch-action:none!important;pointer-events:auto!important;cursor:grab}
+.clip-content{pointer-events:none}
+.resize-handle{pointer-events:auto;width:13px;z-index:8}
+.resize-handle.left::after,.resize-handle.right::after{
+  content:"";position:absolute;top:50%;left:50%;width:3px;height:22px;transform:translate(-50%,-50%);border-radius:99px;background:rgba(255,255,255,.45)
+}
+.clip.dragging{cursor:grabbing!important;z-index:80!important}
+
+@media(min-width:981px){
+  body{overflow:hidden!important}
+  .app-shell{
+    height:100vh!important;
+    grid-template-rows:auto minmax(300px,1fr) var(--timeline-height)!important;
+    min-height:0;
+  }
+  .workspace{min-height:0;overflow:hidden}
+  .timeline-panel{height:auto!important}
+}
+
+@media(min-width:981px) and (max-width:1280px){
+  .workspace{
+    grid-template-columns:minmax(250px,var(--left-panel-width)) minmax(380px,1fr)!important;
+    grid-template-areas:"left stage" "right right"!important;
+    overflow:auto!important;
+    align-content:start;
+  }
+  .left-panel{grid-area:left!important;min-height:0;max-height:none!important;resize:horizontal;overflow:auto!important;min-width:230px;max-width:60vw}
+  .stage-panel{grid-area:stage!important;min-width:0;min-height:520px}
+  .right-panel{grid-area:right!important;display:block!important;max-height:360px!important;overflow:auto!important;resize:vertical;min-height:180px}
+  .right-panel .inspector{grid-template-columns:repeat(2,minmax(220px,1fr))!important}
+}
+
+@media(max-width:980px){
+  body{overflow:auto!important}
+  .app-shell{height:auto!important;min-height:100vh!important;grid-template-rows:auto auto auto!important;overflow:visible!important}
+  .workspace{grid-template-columns:1fr!important;grid-template-areas:"stage" "left" "right"!important;overflow:visible!important}
+  .stage-panel{grid-area:stage!important;min-height:560px}
+  .left-panel{grid-area:left!important;display:block!important;overflow:visible!important;max-height:none!important}
+  .right-panel{grid-area:right!important;display:block!important;overflow:visible!important;max-height:none!important}
+  .timeline-panel{height:var(--timeline-height)!important;min-height:240px;max-height:none;position:relative;resize:vertical;overflow:hidden}
+  .timeline-scroll{overflow:auto!important}
+}
+
+@media(max-width:560px){
+  :root{--timeline-height:360px}
+  .timeline-toolbar{display:grid!important;grid-template-columns:1fr;gap:8px}
+  .timeline-panel{grid-template-rows:auto minmax(0,1fr)!important}
+  .toolbar-left,.toolbar-right{display:flex;flex-wrap:nowrap;overflow-x:auto;width:100%}
+  .timeline-resizer{display:none}
+}
+@media(max-width:1280px){.col-resizer{display:none!important}}

@@ -1,4 +1,4 @@
-/* VideoMaker Studio AI - static GitHub Pages editor - V9 resizable panels, draggable tracks, new project */
+/* VideoMaker Studio AI - static GitHub Pages editor - V10 timeline resizable, compact editable layout, stable drag */
 (() => {
   'use strict';
 
@@ -38,6 +38,8 @@
     timeReadout: $('#timeReadout'),
     timelineInfo: $('#timelineInfo'),
     timelineScroll: $('#timelineScroll'),
+    timelinePanel: $('#timelinePanel'),
+    timelineResizer: $('#timelineResizer'),
     ruler: $('#ruler'),
     mediaTrack: $('#mediaTrack'),
     textTrack: $('#textTrack'),
@@ -551,7 +553,9 @@
     const original = { start: clip.start, duration: clip.duration, trimStart: clip.trimStart || 0 };
     const action = e.target.classList.contains('left') ? 'resize-left' : e.target.classList.contains('right') ? 'resize-right' : 'move';
     let moved = false;
+    let historyPushed = false;
     node.classList.add('dragging');
+    dom.timelineScroll?.classList.add('dragging-timeline');
     try { node.setPointerCapture(e.pointerId); } catch (_) {}
 
     const updateNode = () => {
@@ -565,8 +569,12 @@
     };
 
     const onMove = (ev) => {
+      ev.preventDefault?.();
       const dxPx = ev.clientX - startX;
-      if (Math.abs(dxPx) > 2) moved = true;
+      if (Math.abs(dxPx) > 2) {
+        moved = true;
+        if (!historyPushed) { pushHistory(); historyPushed = true; }
+      }
       const dx = dxPx / state.pps;
       const minDur = .2;
       if (action === 'move') {
@@ -589,10 +597,11 @@
 
     const onUp = () => {
       node.classList.remove('dragging');
+      dom.timelineScroll?.classList.remove('dragging-timeline');
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onUp);
-      if (moved) pushHistory();
+      if (moved) { computeDuration(); saveAutosave(); }
       renderAll();
     };
 
@@ -1877,10 +1886,10 @@
     pushHistory();
   }
   function saveAutosave() {
-    try { localStorage.setItem('videomaker_autosave_v9', JSON.stringify(serializeProject())); } catch(_) {}
+    try { localStorage.setItem('videomaker_autosave_v10', JSON.stringify(serializeProject())); } catch(_) {}
   }
   function loadAutosave() {
-    const raw = localStorage.getItem('videomaker_autosave_v9') || localStorage.getItem('videomaker_autosave_v6');
+    const raw = localStorage.getItem('videomaker_autosave_v10') || localStorage.getItem('videomaker_autosave_v9') || localStorage.getItem('videomaker_autosave_v6');
     if (!raw) return;
     try { const data = JSON.parse(raw); if (data?.clips) restoreProject(data); } catch(_) {}
   }
@@ -1917,6 +1926,7 @@
     try {
       localStorage.removeItem('videomaker_autosave_v6');
       localStorage.removeItem('videomaker_autosave_v9');
+      localStorage.removeItem('videomaker_autosave_v10');
     } catch (_) {}
     syncBrandingInputs();
     applyFormat();
@@ -1976,8 +1986,53 @@
     });
   }
 
+
+
+  function applySavedTimelineHeight() {
+    const saved = Number(localStorage.getItem('videomaker_timeline_height') || 0);
+    if (saved) document.documentElement.style.setProperty('--timeline-height', `${clamp(saved, 180, Math.max(220, window.innerHeight * .58))}px`);
+  }
+
+  function initTimelineResizer() {
+    applySavedTimelineHeight();
+    const handle = dom.timelineResizer;
+    if (!handle) return;
+    handle.addEventListener('pointerdown', e => {
+      if (window.innerWidth <= 560) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const startY = e.clientY;
+      const startHeight = dom.timelinePanel?.getBoundingClientRect().height || parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--timeline-height')) || 300;
+      document.body.classList.add('resizing-timeline');
+      handle.classList.add('active');
+      try { handle.setPointerCapture(e.pointerId); } catch (_) {}
+      const onMove = ev => {
+        ev.preventDefault?.();
+        const dy = startY - ev.clientY; // trascino verso l'alto = timeline più alta
+        const max = Math.max(240, window.innerHeight * .62);
+        const value = clamp(startHeight + dy, 180, max);
+        document.documentElement.style.setProperty('--timeline-height', `${value}px`);
+        requestAnimationFrame(() => { updatePreviewLayout(); updatePlayhead(); });
+      };
+      const onUp = () => {
+        document.body.classList.remove('resizing-timeline');
+        handle.classList.remove('active');
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+        window.removeEventListener('pointercancel', onUp);
+        const h = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--timeline-height')) || 300;
+        try { localStorage.setItem('videomaker_timeline_height', String(Math.round(h))); } catch (_) {}
+        requestAnimationFrame(() => { updatePreviewLayout(); updatePlayhead(); });
+      };
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+      window.addEventListener('pointercancel', onUp);
+    });
+  }
+
   function initEvents() {
     initPanelResizers();
+    initTimelineResizer();
     dom.mediaInput.addEventListener('change', e => addFiles(e.target.files));
     dom.dropZone.addEventListener('dragover', e => { e.preventDefault(); dom.dropZone.classList.add('drag'); });
     dom.dropZone.addEventListener('dragleave', () => dom.dropZone.classList.remove('drag'));

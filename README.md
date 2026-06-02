@@ -1,7 +1,17 @@
-# VideoMaker Studio AI Pro V9
+# VideoMaker Studio AI Pro V10
 
 Webapp statica pronta per GitHub Pages per creare video da foto, video, audio, testi, effetti, transizioni e sottotitoli AI.
 
+
+
+## Novità V10 - Timeline ridimensionabile e layout compatto corretto
+
+- Aggiunta maniglia superiore per alzare o abbassare la **timeline** in basso.
+- Migliorato il trascinamento delle tracce nella timeline: ora il blocco si sposta meglio anche quando la pagina è ridotta.
+- Migliorate le maniglie laterali dei blocchi per allungare/accorciare clip, testi, sottotitoli e audio.
+- Quando la finestra del PC viene dimezzata, i pannelli non spariscono più: anteprima, schede e Inspector restano editabili in layout compatto.
+- Su schermi medi il pannello sinistro e l'Inspector restano accessibili con scroll interno.
+- Cache PWA aggiornata: `videomaker-studio-ai-v14-responsive-timeline-editor`.
 
 ## Novità V9 - Pannelli allargabili, tracce trascinabili e nuovo progetto
 

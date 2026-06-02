@@ -1,4 +1,4 @@
-const CACHE_NAME = 'videomaker-studio-ai-v13-resizable-new-project';
+const CACHE_NAME = 'videomaker-studio-ai-v14-responsive-timeline-editor';
 const ASSETS = [
   './',
   './index.html',
