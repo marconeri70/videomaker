@@ -37,6 +37,8 @@
             <option value="60">60</option>
           </select>
         </label>
+        <button id="newProjectBtn" class="btn ghost">Nuovo progetto</button>
+        <button id="clearProjectBtn" class="btn danger">Elimina progetto</button>
         <button id="saveProjectBtn" class="btn ghost">Salva progetto</button>
         <label class="btn ghost file-btn">Carica progetto<input id="loadProjectInput" type="file" accept="application/json" /></label>
         <button id="exportWebmBtn" class="btn secondary">Esporta WEBM</button>
@@ -227,6 +229,8 @@
         </section>
       </aside>
 
+      <div class="col-resizer left-resizer" data-resize-panel="left" title="Trascina per allargare o restringere la scheda sinistra"></div>
+
       <section class="stage-panel">
         <div class="preview-header glass">
           <div>
@@ -257,6 +261,8 @@
           <span id="timeReadout">0:00 / 0:00</span>
         </div>
       </section>
+
+      <div class="col-resizer right-resizer" data-resize-panel="right" title="Trascina per allargare o restringere la scheda destra"></div>
 
       <aside class="right-panel glass">
         <div class="panel-heading">

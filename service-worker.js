@@ -1,4 +1,4 @@
-const CACHE_NAME = 'videomaker-studio-ai-v12-preview-no-duplicates';
+const CACHE_NAME = 'videomaker-studio-ai-v13-resizable-new-project';
 const ASSETS = [
   './',
   './index.html',

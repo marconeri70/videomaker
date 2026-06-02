@@ -158,3 +158,56 @@ p{margin:0;color:var(--muted);font-size:12px;line-height:1.35}
   .topbar{padding:10px 14px}.brand-mark{width:42px;height:42px}.timeline-panel{padding:8px}.stage-panel{grid-template-rows:48px 1fr 54px;gap:8px}
   .preview-wrap{padding:10px;min-height:220px}.left-panel,.right-panel{padding:10px}
 }
+
+/* V9 - pannelli ridimensionabili, timeline drag stabile e nuovo progetto */
+:root{
+  --left-panel-width:330px;
+  --right-panel-width:340px;
+}
+.col-resizer{display:none}
+.clip{touch-action:none;cursor:grab}
+.clip.dragging{cursor:grabbing;outline:2px solid rgba(255,255,255,.5);z-index:30;box-shadow:0 0 0 5px rgba(0,224,255,.14),0 18px 42px rgba(0,0,0,.46)}
+body.resizing-panels, body.resizing-panels *{cursor:col-resize!important;user-select:none!important}
+.btn.danger{background:rgba(255,77,109,.16);border-color:rgba(255,77,109,.38)}
+
+@media(min-width:1181px){
+  .workspace{
+    grid-template-columns:var(--left-panel-width) 8px minmax(360px,1fr) 8px var(--right-panel-width)!important;
+    grid-template-areas:"left resizeLeft stage resizeRight right"!important;
+    align-items:stretch;
+  }
+  .left-panel{grid-area:left!important;min-width:240px;max-width:620px}
+  .stage-panel{grid-area:stage!important}
+  .right-panel{grid-area:right!important;display:block!important;min-width:240px;max-width:620px;max-height:none!important}
+  .left-resizer{grid-area:resizeLeft}
+  .right-resizer{grid-area:resizeRight}
+  .col-resizer{
+    display:block;
+    width:8px;
+    min-width:8px;
+    border-radius:999px;
+    position:relative;
+    align-self:stretch;
+    cursor:col-resize;
+    background:linear-gradient(180deg,rgba(255,255,255,.08),rgba(255,255,255,.02));
+    border:1px solid rgba(255,255,255,.08);
+    opacity:.72;
+    transition:.18s;
+  }
+  .col-resizer::before{
+    content:"";
+    position:absolute;
+    top:50%;left:50%;
+    width:3px;height:58px;
+    transform:translate(-50%,-50%);
+    border-radius:99px;
+    background:linear-gradient(180deg,var(--primary),var(--primary-2));
+    box-shadow:0 0 18px rgba(0,224,255,.24);
+    opacity:.75;
+  }
+  .col-resizer:hover,.col-resizer.active{opacity:1;border-color:rgba(0,224,255,.35);background:rgba(0,224,255,.08)}
+}
+
+@media(max-width:1180px){
+  .col-resizer{display:none!important}
+}

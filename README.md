@@ -1,7 +1,15 @@
-# VideoMaker Studio AI Pro V8
+# VideoMaker Studio AI Pro V9
 
 Webapp statica pronta per GitHub Pages per creare video da foto, video, audio, testi, effetti, transizioni e sottotitoli AI.
 
+
+## Novità V9 - Pannelli allargabili, tracce trascinabili e nuovo progetto
+
+- Aggiunte maniglie laterali per allargare o restringere le schede laterali su PC.
+- Migliorato il trascinamento delle tracce nella timeline: foto, video, testi, sottotitoli e audio si spostano con mouse o dito.
+- Migliorato il ridimensionamento dei blocchi dalla timeline con le maniglie laterali.
+- Aggiunti i pulsanti **Nuovo progetto** ed **Elimina progetto** per cancellare la timeline e ricominciare da zero.
+- Cache PWA aggiornata: `videomaker-studio-ai-v13-resizable-new-project`.
 
 ## Novità V8 - Fix testi e sottotitoli doppi
 

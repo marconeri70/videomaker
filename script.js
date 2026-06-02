@@ -1,4 +1,4 @@
-/* VideoMaker Studio AI - static GitHub Pages editor - V7 Gemini retry + fallback fix */
+/* VideoMaker Studio AI - static GitHub Pages editor - V9 resizable panels, draggable tracks, new project */
 (() => {
   'use strict';
 
@@ -56,6 +56,8 @@
     proxyUrlInput: $('#proxyUrlInput'),
     transcribeModel: $('#transcribeModel'),
     saveKeyCheck: $('#saveKeyCheck'),
+    newProjectBtn: $('#newProjectBtn'),
+    clearProjectBtn: $('#clearProjectBtn'),
     subtitleDraftText: $('#subtitleDraftText'),
     srtInput: $('#srtInput'),
     introEnable: $('#introEnable'),
@@ -191,7 +193,7 @@
 
   function serializeProject() {
     return {
-      version: 9,
+      version: 10,
       projectName: state.projectName,
       format: state.format,
       fps: state.fps,
@@ -532,43 +534,71 @@
   }
 
   function onClipPointerDown(e) {
+    if (e.button !== undefined && e.button !== 0) return;
     const node = e.currentTarget;
     const id = node.dataset.clipId;
     const track = node.dataset.track;
     const found = findClip(id);
     if (!found) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    stopPlayback();
     selectClip(id, track, false);
+
     const clip = found.clip;
     const startX = e.clientX;
     const original = { start: clip.start, duration: clip.duration, trimStart: clip.trimStart || 0 };
     const action = e.target.classList.contains('left') ? 'resize-left' : e.target.classList.contains('right') ? 'resize-right' : 'move';
-    node.setPointerCapture(e.pointerId);
+    let moved = false;
+    node.classList.add('dragging');
+    try { node.setPointerCapture(e.pointerId); } catch (_) {}
+
+    const updateNode = () => {
+      node.style.left = `${clip.start * state.pps}px`;
+      node.style.width = `${Math.max(22, clip.duration * state.pps)}px`;
+      const content = $('.clip-content', node);
+      if (content) {
+        if (track === 'text' || track === 'subtitles') content.innerHTML = `<b>${escapeHtml(clip.text || clip.label)}</b><small>${fmtTime(clip.start)} → ${fmtTime(clip.start + clip.duration)}</small>`;
+        else content.innerHTML = `<b>${escapeHtml(clip.label || clip.text || track)}</b><small>${fmtTime(clip.start)} → ${fmtTime(clip.start + clip.duration)}</small>`;
+      }
+    };
+
     const onMove = (ev) => {
-      const dx = (ev.clientX - startX) / state.pps;
+      const dxPx = ev.clientX - startX;
+      if (Math.abs(dxPx) > 2) moved = true;
+      const dx = dxPx / state.pps;
+      const minDur = .2;
       if (action === 'move') {
         clip.start = snapTime(Math.max(0, original.start + dx));
       } else if (action === 'resize-right') {
-        clip.duration = snapTime(Math.max(.2, original.duration + dx));
+        clip.duration = snapTime(Math.max(minDur, original.duration + dx));
       } else if (action === 'resize-left') {
-        const newStart = snapTime(Math.max(0, original.start + dx));
         const end = original.start + original.duration;
-        clip.start = Math.min(newStart, end - .2);
-        clip.duration = snapTime(Math.max(.2, end - clip.start));
+        const newStart = snapTime(Math.max(0, Math.min(end - minDur, original.start + dx)));
+        clip.start = newStart;
+        clip.duration = snapTime(Math.max(minDur, end - clip.start));
         if (clip.kind === 'audio' || clip.kind === 'video') clip.trimStart = Math.max(0, original.trimStart + (clip.start - original.start));
       }
       computeDuration();
-      renderTimeline();
+      updateNode();
+      updatePlayhead();
       renderInspector();
       renderPreview(state.currentTime);
     };
+
     const onUp = () => {
-      node.removeEventListener('pointermove', onMove);
-      node.removeEventListener('pointerup', onUp);
-      pushHistory();
+      node.classList.remove('dragging');
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+      if (moved) pushHistory();
       renderAll();
     };
-    node.addEventListener('pointermove', onMove);
-    node.addEventListener('pointerup', onUp);
+
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
   }
 
   function selectClip(id, track, doRender = true) {
@@ -1847,10 +1877,10 @@
     pushHistory();
   }
   function saveAutosave() {
-    try { localStorage.setItem('videomaker_autosave_v6', JSON.stringify(serializeProject())); } catch(_) {}
+    try { localStorage.setItem('videomaker_autosave_v9', JSON.stringify(serializeProject())); } catch(_) {}
   }
   function loadAutosave() {
-    const raw = localStorage.getItem('videomaker_autosave_v6');
+    const raw = localStorage.getItem('videomaker_autosave_v9') || localStorage.getItem('videomaker_autosave_v6');
     if (!raw) return;
     try { const data = JSON.parse(raw); if (data?.clips) restoreProject(data); } catch(_) {}
   }
@@ -1865,7 +1895,89 @@
   function updateLoading(percent,text) { dom.loadingText.textContent = percent == null ? (text || '') : `${percent}% • ${text || ''}`; }
   function hideLoading() { dom.loadingOverlay.classList.add('hidden'); }
 
+
+  function resetProject(confirmFirst = true) {
+    const hasContent = state.assets.length || Object.values(state.clips).some(list => list.length);
+    if (confirmFirst && hasContent && !confirm('Vuoi eliminare il progetto corrente e iniziarne uno nuovo? Questa operazione cancella timeline, testi, audio e media caricati.')) return;
+    stopPlayback();
+    try { state.assets.forEach(a => { if (a.url?.startsWith('blob:')) URL.revokeObjectURL(a.url); }); } catch (_) {}
+    try { audioPlayback.forEach(a => { a.pause?.(); a.src = ''; }); } catch (_) {}
+    mediaCache.clear();
+    audioPlayback.clear();
+    state.projectName = 'Nuovo progetto';
+    state.assets = [];
+    state.clips = { media: [], text: [], subtitles: [], audio: [] };
+    state.branding = { ...DEFAULT_BRANDING };
+    state.selected = null;
+    state.currentTime = 0;
+    state.duration = 0;
+    state.future.length = 0;
+    state.history.length = 0;
+    if (dom.mediaInput) dom.mediaInput.value = '';
+    try {
+      localStorage.removeItem('videomaker_autosave_v6');
+      localStorage.removeItem('videomaker_autosave_v9');
+    } catch (_) {}
+    syncBrandingInputs();
+    applyFormat();
+    pushHistory();
+    renderAll();
+  }
+
+  function applySavedPanelSizes() {
+    const root = document.documentElement;
+    const savedLeft = Number(localStorage.getItem('videomaker_left_panel_width') || 0);
+    const savedRight = Number(localStorage.getItem('videomaker_right_panel_width') || 0);
+    if (savedLeft) root.style.setProperty('--left-panel-width', `${clamp(savedLeft, 240, 560)}px`);
+    if (savedRight) root.style.setProperty('--right-panel-width', `${clamp(savedRight, 240, 560)}px`);
+  }
+
+  function initPanelResizers() {
+    applySavedPanelSizes();
+    $$('.col-resizer').forEach(handle => {
+      handle.addEventListener('pointerdown', e => {
+        if (window.innerWidth < 1181) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const side = handle.dataset.resizePanel;
+        const panel = side === 'left' ? $('.left-panel') : $('.right-panel');
+        if (!panel) return;
+        const startX = e.clientX;
+        const startWidth = panel.getBoundingClientRect().width;
+        document.body.classList.add('resizing-panels');
+        handle.classList.add('active');
+        try { handle.setPointerCapture(e.pointerId); } catch (_) {}
+        const onMove = ev => {
+          const dx = ev.clientX - startX;
+          const next = side === 'left' ? startWidth + dx : startWidth - dx;
+          const max = Math.min(620, Math.max(300, window.innerWidth * .42));
+          const value = clamp(next, 240, max);
+          document.documentElement.style.setProperty(side === 'left' ? '--left-panel-width' : '--right-panel-width', `${value}px`);
+          requestAnimationFrame(updatePreviewLayout);
+        };
+        const onUp = () => {
+          document.body.classList.remove('resizing-panels');
+          handle.classList.remove('active');
+          window.removeEventListener('pointermove', onMove);
+          window.removeEventListener('pointerup', onUp);
+          window.removeEventListener('pointercancel', onUp);
+          const left = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--left-panel-width')) || 330;
+          const right = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--right-panel-width')) || 340;
+          try {
+            localStorage.setItem('videomaker_left_panel_width', String(Math.round(left)));
+            localStorage.setItem('videomaker_right_panel_width', String(Math.round(right)));
+          } catch (_) {}
+          requestAnimationFrame(updatePreviewLayout);
+        };
+        window.addEventListener('pointermove', onMove);
+        window.addEventListener('pointerup', onUp);
+        window.addEventListener('pointercancel', onUp);
+      });
+    });
+  }
+
   function initEvents() {
+    initPanelResizers();
     dom.mediaInput.addEventListener('change', e => addFiles(e.target.files));
     dom.dropZone.addEventListener('dragover', e => { e.preventDefault(); dom.dropZone.classList.add('drag'); });
     dom.dropZone.addEventListener('dragleave', () => dom.dropZone.classList.remove('drag'));
@@ -1903,6 +2015,8 @@
     $$('.brand-style').forEach(btn => btn.addEventListener('click', () => applyBrandStyle(btn.dataset.brandStyle || 'modern')));
     $$('.brand-color-chip').forEach(btn => btn.addEventListener('click', () => applyBrandPalette(btn.dataset.title, btn.dataset.subtitle, btn.dataset.bg)));
     $('#deleteSelectedBtn').addEventListener('click', deleteSelected);
+    dom.newProjectBtn?.addEventListener('click', () => resetProject(true));
+    dom.clearProjectBtn?.addEventListener('click', () => resetProject(true));
     dom.formatSelect.addEventListener('change', e => { pushHistory(); state.format = e.target.value; applyFormat(); saveAutosave(); });
     dom.fpsSelect.addEventListener('change', e => { state.fps = Number(e.target.value); saveAutosave(); });
     dom.playBtn.addEventListener('click', () => state.playing ? stopPlayback() : startPlayback());
