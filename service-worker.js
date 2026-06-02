@@ -1,4 +1,4 @@
-const CACHE_NAME = 'videomaker-studio-ai-v14-responsive-timeline-editor';
+const CACHE_NAME = 'videomaker-studio-ai-v15-logo-overlay-editor';
 const ASSETS = [
   './',
   './index.html',

@@ -29,8 +29,10 @@
     loadingTitle: $('#loadingTitle'),
     loadingText: $('#loadingText'),
     mediaInput: $('#mediaInput'),
+    logoInput: $('#logoInput'),
     dropZone: $('#dropZone'),
     assetLibrary: $('#assetLibrary'),
+    logoLibrary: $('#logoLibrary'),
     formatSelect: $('#formatSelect'),
     fpsSelect: $('#fpsSelect'),
     playBtn: $('#playBtn'),
@@ -44,6 +46,7 @@
     mediaTrack: $('#mediaTrack'),
     textTrack: $('#textTrack'),
     subtitlesTrack: $('#subtitlesTrack'),
+    logosTrack: $('#logosTrack'),
     audioTrack: $('#audioTrack'),
     playhead: $('#playhead'),
     zoomSlider: $('#zoomSlider'),
@@ -163,7 +166,7 @@
   const state = {
     projectName: 'Nuovo progetto',
     assets: [],
-    clips: { media: [], text: [], subtitles: [], audio: [] },
+    clips: { media: [], text: [], subtitles: [], logos: [], audio: [] },
     branding: { ...DEFAULT_BRANDING },
     selected: null,
     currentTime: 0,
@@ -195,7 +198,7 @@
 
   function serializeProject() {
     return {
-      version: 10,
+      version: 11,
       projectName: state.projectName,
       format: state.format,
       fps: state.fps,
@@ -212,7 +215,7 @@
     state.fps = Number(data.fps || 30);
     state.pps = Number(data.pps || 95);
     state.assets = (data.assets || []).map(a => ({ ...a, file:null }));
-    state.clips = { media: [], text: [], subtitles: [], audio: [], ...(data.clips || {}) };
+    state.clips = { media: [], text: [], subtitles: [], logos: [], audio: [], ...(data.clips || {}) };
     state.branding = { ...DEFAULT_BRANDING, ...(data.branding || {}) };
     syncBrandingInputs();
     state.selected = null;
@@ -279,7 +282,7 @@
   }
 
   function computeDuration() {
-    const all = [...state.clips.media, ...state.clips.text, ...state.clips.subtitles, ...state.clips.audio];
+    const all = Object.values(state.clips).flat();
     state.duration = Math.max(0, ...all.map(c => c.start + c.duration));
     dom.timeSlider.max = Math.max(0.01, state.duration);
     dom.timelineInfo.textContent = `Durata ${fmtTime(state.duration)}`;
@@ -364,6 +367,44 @@
     state.clips.subtitles.push({ id:uid('clip'), track:'subtitles', kind:'subtitle', label:'Sottotitolo', text, start, duration, x:.5, y:.82, size:42, color:'#ffffff', background:'rgba(0,0,0,.62)', font:'Inter', weight:800, animation:'pop', align:'center', shadow:true, effect:'none' });
   }
 
+  function addLogoClip(asset, opts = {}) {
+    if (!asset) {
+      alert('Carica o seleziona prima un logo.');
+      return;
+    }
+    const subtitle = selectedClip();
+    const linkToSubtitle = opts.linkToSubtitle && subtitle?.track === 'subtitles';
+    const fullVideo = opts.fullVideo === true;
+    const start = linkToSubtitle ? subtitle.clip.start : (fullVideo ? 0 : state.currentTime);
+    const duration = linkToSubtitle ? subtitle.clip.duration : (fullVideo ? Math.max(state.duration || 0, endOfTrack('media'), endOfTrack('audio'), 5) : Math.max(2, Math.min(6, state.duration || 5)));
+    const clip = {
+      id: uid('clip'), track:'logos', kind:'logo', assetId:asset.id, label:asset.name || 'Logo',
+      start, duration: clamp(duration, .3, 999), x: opts.x ?? .84, y: opts.y ?? .12,
+      size: opts.size ?? .16, opacity: opts.opacity ?? .92, rotation: opts.rotation ?? 0,
+      effect: opts.effect || 'none', animation: opts.animation || 'fade', linkedSubtitleId: linkToSubtitle ? subtitle.clip.id : null
+    };
+    state.clips.logos.push(clip);
+    state.selected = { id: clip.id, track:'logos' };
+  }
+
+  async function addLogoFiles(files) {
+    const list = Array.from(files || []);
+    if (!list.length) return;
+    pushHistory();
+    for (const file of list) {
+      if (!file.type.startsWith('image/') && !file.name.toLowerCase().endsWith('.svg')) continue;
+      const url = URL.createObjectURL(file);
+      const asset = { id: uid('asset'), file, url, type:'logo', name:file.name, duration:0, thumb:url, waveform:null };
+      state.assets.push(asset);
+      if (!state.clips.logos.length) addLogoClip(asset, { fullVideo:true });
+    }
+    renderAll();
+  }
+
+  function currentLogoAsset() {
+    return state.assets.find(a => a.type === 'logo') || state.assets.find(a => a.type === 'image');
+  }
+
   function loadVideoMeta(asset) {
     return new Promise((resolve, reject) => {
       const video = document.createElement('video');
@@ -432,6 +473,7 @@
   function renderAll() {
     computeDuration();
     renderLibrary();
+    renderLogoLibrary();
     renderPresets();
     renderTimeline();
     renderInspector();
@@ -463,6 +505,26 @@
     }
   }
 
+  function renderLogoLibrary() {
+    if (!dom.logoLibrary) return;
+    const logos = state.assets.filter(a => a.type === 'logo');
+    if (!logos.length) {
+      dom.logoLibrary.className = 'asset-library empty-state';
+      dom.logoLibrary.textContent = 'Nessun logo caricato';
+      return;
+    }
+    dom.logoLibrary.className = 'asset-library';
+    dom.logoLibrary.innerHTML = '';
+    for (const asset of logos) {
+      const div = document.createElement('div');
+      div.className = 'asset-card logo-card';
+      div.dataset.assetId = asset.id;
+      div.innerHTML = `<div class="asset-thumb logo-thumb" style="background-image:url('${asset.thumb || asset.url}')"></div><div><b>${escapeHtml(asset.name)}</b><span>logo / overlay</span></div>`;
+      div.addEventListener('click', () => { pushHistory(); addLogoClip(asset); renderAll(); });
+      dom.logoLibrary.appendChild(div);
+    }
+  }
+
   function renderPresets() {
     if (!dom.effectGrid.dataset.ready) {
       dom.effectGrid.innerHTML = EFFECTS.map(e => `<button class="preset" style="--glow:${e.glow || 'rgba(124,92,255,.2)'}" data-effect="${e.id}"><b>${e.name}</b><span>${e.desc}</span></button>`).join('');
@@ -489,11 +551,12 @@
   function renderTimeline() {
     const totalWidth = Math.max(900, (Math.max(state.duration, 12) + 2) * state.pps);
     document.documentElement.style.setProperty('--pps', `${state.pps}px`);
-    [dom.ruler, dom.mediaTrack, dom.textTrack, dom.subtitlesTrack, dom.audioTrack].forEach(el => el.style.width = `${totalWidth}px`);
+    [dom.ruler, dom.mediaTrack, dom.textTrack, dom.subtitlesTrack, dom.logosTrack, dom.audioTrack].filter(Boolean).forEach(el => el.style.width = `${totalWidth}px`);
     renderRuler(totalWidth);
     renderTrack('media', dom.mediaTrack);
     renderTrack('text', dom.textTrack);
     renderTrack('subtitles', dom.subtitlesTrack);
+    renderTrack('logos', dom.logosTrack);
     renderTrack('audio', dom.audioTrack);
     updatePlayhead();
   }
@@ -529,6 +592,7 @@
       if (track === 'audio' && asset?.waveform) thumb.style.backgroundImage = `url('${asset.waveform}')`;
       content.innerHTML = `<b>${escapeHtml(clip.label || clip.text || track)}</b><small>${fmtTime(clip.start)} → ${fmtTime(clip.start + clip.duration)}</small>`;
       if (track === 'text' || track === 'subtitles') content.innerHTML = `<b>${escapeHtml(clip.text || clip.label)}</b><small>${fmtTime(clip.duration)}</small>`;
+      if (track === 'logos') content.innerHTML = `<b>${escapeHtml(clip.label || 'Logo')}</b><small>${fmtTime(clip.start)} → ${fmtTime(clip.start + clip.duration)}</small>`;
       node.addEventListener('pointerdown', onClipPointerDown);
       node.addEventListener('click', (e) => { e.stopPropagation(); selectClip(clip.id, track); });
       lane.appendChild(node);
@@ -685,6 +749,19 @@
         html += `<div class="section"><div class="inline2">${numberControl('trimStart','Taglio inizio', clip.trimStart || 0, 0, 999, .1)}${rangeControl('volume','Volume video', clip.volume ?? 1, 0, 1, .01)}</div></div>`;
       }
     }
+    if (track === 'logos') {
+      html += `
+        <div class="section">
+          <div class="inline2">${selectControl('effect','Filtro logo', clip.effect || 'none', EFFECTS.map(e=>[e.id,e.name]))}${selectControl('animation','Animazione', clip.animation || 'fade', [['none','Nessuna'],['fade','Fade'],['pop','Pop'],['pulse','Pulse']])}</div>
+          <div class="inline3">
+            ${rangeControl('x','Posizione X', clip.x ?? .84, 0, 1, .01)}
+            ${rangeControl('y','Posizione Y', clip.y ?? .12, 0, 1, .01)}
+            ${rangeControl('size','Dimensione', clip.size || .16, .03, .75, .01)}
+          </div>
+          <div class="inline2">${rangeControl('opacity','Opacità', clip.opacity ?? .92, 0, 1, .01)}${numberControl('rotation','Rotazione', clip.rotation || 0, -180, 180, 1)}</div>
+          <button id="logoFullDurationBtn" class="btn ghost full">Mostra logo per tutto il video</button>
+        </div>`;
+    }
     if (track === 'audio') {
       html += `
         <div class="section">
@@ -713,6 +790,7 @@
     });
     $('#deleteClipBtn')?.addEventListener('click', deleteSelected);
     $('#duplicateClipBtn')?.addEventListener('click', duplicateSelected);
+    $('#logoFullDurationBtn')?.addEventListener('click', () => { const f = selectedClip(); if (!f) return; pushHistory(); f.clip.start = 0; f.clip.duration = Math.max(state.duration || 0, endOfTrack('media'), endOfTrack('audio'), 5); renderAll(); });
   }
 
   function updateClipField(input) {
@@ -749,7 +827,7 @@
     if (!asset) return null;
     if (mediaCache.has(asset.id)) return mediaCache.get(asset.id);
     let el;
-    if (asset.type === 'image') {
+    if (asset.type === 'image' || asset.type === 'logo') {
       el = new Image();
       el.src = asset.url;
     } else if (asset.type === 'video') {
@@ -783,10 +861,15 @@
     const active = activeClips('media', t).at(-1);
     const activeText = activeClips('text', t);
     const activeSubs = activeClips('subtitles', t);
+    const activeLogos = activeClips('logos', t);
     if (active) {
       drawMediaClip(active, t, w, h);
       state.hitboxes.push({ id:active.id, track:'media', x:0, y:0, w, h, label:'media' });
-    } else if (!state.duration && !activeText.length && !activeSubs.length) drawEmptyPreview(w,h);
+    } else if (!state.duration && !activeText.length && !activeSubs.length && !activeLogos.length) drawEmptyPreview(w,h);
+
+    if (options.renderLogoInCanvas === true) {
+      for (const logo of activeLogos) drawLogoClip(logo, t, w, h);
+    }
 
     if (renderTextInCanvas) {
       for (const text of activeText) drawTextClip(text, t, w, h);
@@ -837,6 +920,32 @@
       item.addEventListener('pointerdown', onPreviewOverlayPointerDown);
       dom.previewOverlay.appendChild(item);
     }
+    for (const clip of activeClips('logos', state.currentTime)) {
+      const asset = getAsset(clip.assetId);
+      if (!asset) continue;
+      const img = getMediaElement(asset);
+      const naturalW = img?.naturalWidth || img?.width || 1;
+      const naturalH = img?.naturalHeight || img?.height || 1;
+      const aspect = naturalH ? naturalW / naturalH : 1;
+      const logoW = Math.max(24, (clip.size || .16) * canvasRect.width);
+      const logoH = Math.max(18, logoW / Math.max(.1, aspect));
+      const item = document.createElement('div');
+      item.className = `preview-logo-node ${state.selected?.id === clip.id ? 'selected' : ''}`;
+      item.dataset.clipId = clip.id;
+      item.style.left = `${(clip.x ?? .84) * canvasRect.width}px`;
+      item.style.top = `${(clip.y ?? .12) * canvasRect.height}px`;
+      item.style.width = `${logoW}px`;
+      item.style.height = `${logoH}px`;
+      item.style.opacity = clip.opacity ?? .92;
+      item.style.transform = `translate(-50%,-50%) rotate(${clip.rotation || 0}deg)`;
+      item.style.backgroundImage = `url('${asset.url || asset.thumb}')`;
+      const effect = EFFECTS.find(e => e.id === (clip.effect || 'none')) || EFFECTS[0];
+      item.style.filter = effect.filter && effect.filter !== 'none' ? effect.filter : '';
+      item.title = 'Logo trascinabile';
+      item.addEventListener('pointerdown', onPreviewOverlayPointerDown);
+      dom.previewOverlay.appendChild(item);
+    }
+
     const media = activeClips('media', state.currentTime).at(-1);
     if (media && state.selected?.id === media.id) {
       const box = document.createElement('div');
@@ -1004,6 +1113,34 @@
   function drawPlaceholder(w,h,name) {
     ctx.fillStyle = 'rgba(255,255,255,.07)'; ctx.fillRect(0,0,w,h);
     ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.font = `700 ${Math.round(w*.03)}px Arial`; ctx.textAlign = 'center'; ctx.fillText(name || 'Caricamento...', w/2, h/2);
+  }
+
+  function drawLogoClip(clip, t, w, h) {
+    const asset = getAsset(clip.assetId);
+    const el = getMediaElement(asset);
+    if (!el || el.complete === false) return;
+    const local = clamp((t - clip.start) / Math.max(.001, clip.duration), 0, 1);
+    const effect = EFFECTS.find(e => e.id === (clip.effect || 'none')) || EFFECTS[0];
+    const iw = el.naturalWidth || el.width || 1;
+    const ih = el.naturalHeight || el.height || 1;
+    const logoW = Math.max(24, (clip.size || .16) * w);
+    const logoH = logoW * (ih / Math.max(1, iw));
+    const x = (clip.x ?? .84) * w;
+    const y = (clip.y ?? .12) * h;
+    let alpha = clip.opacity ?? .92;
+    let scale = 1;
+    if (clip.animation === 'fade') alpha *= smooth(Math.min(1, local * 4)) * smooth(Math.min(1, (1-local)*4));
+    if (clip.animation === 'pop') scale = .86 + smooth(Math.min(1, local * 3)) * .14;
+    if (clip.animation === 'pulse') scale = 1 + Math.sin(local * Math.PI * 8) * .025;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.filter = effect.filter || 'none';
+    ctx.translate(x, y);
+    ctx.rotate((clip.rotation || 0) * Math.PI / 180);
+    ctx.scale(scale, scale);
+    ctx.drawImage(el, -logoW/2, -logoH/2, logoW, logoH);
+    ctx.restore();
+    state.hitboxes.push({ id:clip.id, track:'logos', x:x-logoW/2, y:y-logoH/2, w:logoW, h:logoH, label:'logo' });
   }
 
   function drawTextClip(clip, t, w, h, isSubtitle=false) {
@@ -1235,7 +1372,7 @@
           }
         }
 
-        renderPreview(t, { renderTextInCanvas: true, updateOverlay: false });
+        renderPreview(t, { renderTextInCanvas: true, renderLogoInCanvas: true, updateOverlay: false });
         const p = Math.round((t / state.duration) * 100);
         if (p !== lastProgress && (p % 2 === 0 || p === 100)) {
           lastProgress = p;
@@ -1886,10 +2023,10 @@
     pushHistory();
   }
   function saveAutosave() {
-    try { localStorage.setItem('videomaker_autosave_v10', JSON.stringify(serializeProject())); } catch(_) {}
+    try { localStorage.setItem('videomaker_autosave_v11', JSON.stringify(serializeProject())); } catch(_) {}
   }
   function loadAutosave() {
-    const raw = localStorage.getItem('videomaker_autosave_v10') || localStorage.getItem('videomaker_autosave_v9') || localStorage.getItem('videomaker_autosave_v6');
+    const raw = localStorage.getItem('videomaker_autosave_v11') || localStorage.getItem('videomaker_autosave_v10') || localStorage.getItem('videomaker_autosave_v9') || localStorage.getItem('videomaker_autosave_v6');
     if (!raw) return;
     try { const data = JSON.parse(raw); if (data?.clips) restoreProject(data); } catch(_) {}
   }
@@ -1915,7 +2052,7 @@
     audioPlayback.clear();
     state.projectName = 'Nuovo progetto';
     state.assets = [];
-    state.clips = { media: [], text: [], subtitles: [], audio: [] };
+    state.clips = { media: [], text: [], subtitles: [], logos: [], audio: [] };
     state.branding = { ...DEFAULT_BRANDING };
     state.selected = null;
     state.currentTime = 0;
@@ -1927,6 +2064,7 @@
       localStorage.removeItem('videomaker_autosave_v6');
       localStorage.removeItem('videomaker_autosave_v9');
       localStorage.removeItem('videomaker_autosave_v10');
+      localStorage.removeItem('videomaker_autosave_v11');
     } catch (_) {}
     syncBrandingInputs();
     applyFormat();
@@ -2034,6 +2172,7 @@
     initPanelResizers();
     initTimelineResizer();
     dom.mediaInput.addEventListener('change', e => addFiles(e.target.files));
+    dom.logoInput?.addEventListener('change', e => addLogoFiles(e.target.files));
     dom.dropZone.addEventListener('dragover', e => { e.preventDefault(); dom.dropZone.classList.add('drag'); });
     dom.dropZone.addEventListener('dragleave', () => dom.dropZone.classList.remove('drag'));
     dom.dropZone.addEventListener('drop', e => { e.preventDefault(); dom.dropZone.classList.remove('drag'); addFiles(e.dataTransfer.files); });
@@ -2047,6 +2186,17 @@
     $('#addTrackSubtitleBtn').addEventListener('click', () => { pushHistory(); addSubtitleClip(); renderAll(); });
     $('#fitPhotosBtn').addEventListener('click', fitPhotosToAudio);
     $('#autoBeatBtn').addEventListener('click', autoBeatCut);
+    $('#openLogosBtn')?.addEventListener('click', () => {
+      $$('.tab').forEach(t => t.classList.remove('active'));
+      $('[data-tab="logos"]')?.classList.add('active');
+      $$('.panel-tab').forEach(p => p.classList.remove('active'));
+      $('#logosTab')?.classList.add('active');
+    });
+    $('#addLogoBtn')?.addEventListener('click', () => { pushHistory(); addLogoClip(currentLogoAsset()); renderAll(); });
+    $('#addTrackLogoBtn')?.addEventListener('click', () => { pushHistory(); addLogoClip(currentLogoAsset()); renderAll(); });
+    $('#addLogoFullBtn')?.addEventListener('click', () => { pushHistory(); addLogoClip(currentLogoAsset(), { fullVideo:true }); renderAll(); });
+    $('#addLogoSubtitleBtn')?.addEventListener('click', () => { pushHistory(); addLogoClip(currentLogoAsset(), { linkToSubtitle:true }); renderAll(); });
+    $('#clearLogosBtn')?.addEventListener('click', () => { if (!state.clips.logos.length) return; if (confirm('Vuoi rimuovere tutti i loghi dalla timeline?')) { pushHistory(); state.clips.logos.length = 0; renderAll(); } });
     $('#openBrandingBtn')?.addEventListener('click', () => {
       $$('.tab').forEach(t => t.classList.remove('active'));
       $('[data-tab="branding"]')?.classList.add('active');

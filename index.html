@@ -50,6 +50,7 @@
       <aside class="left-panel glass">
         <nav class="tabs">
           <button class="tab active" data-tab="media">Media</button>
+          <button class="tab" data-tab="logos">Loghi</button>
           <button class="tab" data-tab="effects">Effetti</button>
           <button class="tab" data-tab="transitions">Transizioni</button>
           <button class="tab" data-tab="subtitles">Sottotitoli AI</button>
@@ -70,9 +71,33 @@
             <button id="fitPhotosBtn" class="btn ghost">Adatta foto all’audio</button>
             <button id="autoBeatBtn" class="btn ghost">Taglio ritmico</button>
             <button id="openBrandingBtn" class="btn ghost">Messaggi intro/finale</button>
+            <button id="openLogosBtn" class="btn ghost">Loghi / watermark</button>
           </div>
           <h2>Libreria</h2>
           <div id="assetLibrary" class="asset-library empty-state">Nessun file caricato</div>
+        </section>
+
+
+
+        <section id="logosTab" class="panel-tab">
+          <div class="panel-heading">
+            <h2>Loghi / Overlay</h2>
+            <p>Carica un logo da file e inseriscilo nel video, come watermark fisso o collegato al sottotitolo selezionato.</p>
+          </div>
+          <label class="dropzone compact-dropzone">
+            <input id="logoInput" type="file" multiple accept="image/png,image/jpeg,image/webp,image/svg+xml" />
+            <strong>Carica logo da file</strong>
+            <span>Consigliato PNG trasparente, ma vanno bene anche JPG, WEBP e SVG.</span>
+          </label>
+          <div class="quick-actions grid2">
+            <button id="addLogoBtn" class="btn secondary">+ Logo selezionato</button>
+            <button id="addLogoFullBtn" class="btn ghost">Watermark tutto video</button>
+            <button id="addLogoSubtitleBtn" class="btn ghost">Collega al sottotitolo</button>
+            <button id="clearLogosBtn" class="btn danger">Rimuovi loghi</button>
+          </div>
+          <h2>Loghi caricati</h2>
+          <div id="logoLibrary" class="asset-library empty-state">Nessun logo caricato</div>
+          <div class="hint">Dopo aver inserito un logo puoi trascinarlo direttamente nell’anteprima, ridimensionarlo dall’Inspector e spostarlo nella corsia Loghi della timeline.</div>
         </section>
 
         <section id="effectsTab" class="panel-tab">
@@ -285,6 +310,7 @@
         <div class="toolbar-right">
           <button id="addTrackTextBtn" class="btn secondary small">+ Testo</button>
           <button id="addTrackSubtitleBtn" class="btn secondary small">+ Sottotitolo</button>
+          <button id="addTrackLogoBtn" class="btn secondary small">+ Logo</button>
           <button id="deleteSelectedBtn" class="btn danger small">Elimina</button>
         </div>
       </div>
@@ -304,6 +330,10 @@
         <div class="track-row" data-track="subtitles">
           <div class="track-label"><b>Sottotitoli</b><span>AI / manuali</span></div>
           <div class="track-lane" id="subtitlesTrack"></div>
+        </div>
+        <div class="track-row" data-track="logos">
+          <div class="track-label"><b>Loghi</b><span>watermark / overlay</span></div>
+          <div class="track-lane" id="logosTrack"></div>
         </div>
         <div class="track-row" data-track="audio">
           <div class="track-label"><b>Audio</b><span>musica / voce</span></div>
