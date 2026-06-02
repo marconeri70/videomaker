@@ -1,4 +1,4 @@
-# VideoMaker Studio AI Pro
+# VideoMaker Studio AI Pro V6
 
 Webapp statica pronta per GitHub Pages per creare video da foto, video, audio, testi, effetti, transizioni e sottotitoli AI.
 
@@ -92,7 +92,7 @@ Se il browser non supporta MP4 nativo, la webapp tenta la conversione con FFmpeg
 1. Apri la scheda `Sottotitoli AI`.
 2. Scegli `Gemini` come motore AI.
 3. Inserisci la tua chiave API Gemini.
-4. Scegli il modello, ad esempio `gemini-2.0-flash`.
+4. Scegli il modello, consigliato `gemini-3.5-flash` o `gemini-2.5-flash`.
 5. Carica una traccia audio nella timeline.
 6. Premi `Genera sottotitoli AI`.
 
@@ -122,3 +122,7 @@ Questa versione corregge la visualizzazione dell'anteprima e aggiunge un livello
 - foto e video selezionati possono essere spostati cliccando e trascinando nell'anteprima;
 - migliorata la risposta dell'interfaccia quando lo schermo viene dimezzato o usato da cellulare;
 - cache PWA aggiornata alla versione V9.
+
+## Correzione V6 sottotitoli AI
+
+La V6 corregge la generazione sottotitoli con Gemini usando il formato REST corretto `inlineData` / `mimeType`. Per file audio più grandi o quando l'invio inline fallisce, prova automaticamente la Gemini Files API. Gli errori ora mostrano anche il dettaglio tecnico, così è più facile capire se il problema dipende da chiave API, modello, formato audio, dimensione file o rete.

@@ -1,4 +1,4 @@
-/* VideoMaker Studio AI - static GitHub Pages editor - V5 preview overlay fix */
+/* VideoMaker Studio AI - static GitHub Pages editor - V6 Gemini subtitle fix */
 (() => {
   'use strict';
 
@@ -1355,7 +1355,9 @@
     } catch (err) {
       hideLoading();
       console.error(err);
-      alert('Non sono riuscito a generare i sottotitoli AI. Controlla chiave API, modello, rete o formato audio. Con Gemini i tempi possono essere approssimati; con OpenAI spesso sono più precisi.');
+      const detail = String(err?.message || err || '').slice(0, 900);
+      const providerName = provider === 'gemini' ? 'Gemini' : 'OpenAI';
+      alert(`Non sono riuscito a generare i sottotitoli AI con ${providerName}.\n\nDettaglio tecnico: ${detail || 'errore non specificato'}\n\nProva: modello Gemini 3.5 Flash o 2.5 Flash, audio MP3/WAV/AAC/OGG/FLAC, chiave API valida e CTRL+F5 dopo l’aggiornamento.`);
     }
   }
 
@@ -1376,32 +1378,138 @@
   }
 
   async function transcribeWithGemini(apiKey, file, audioClip) {
-    const model = (dom.transcribeModel.value || 'gemini-2.0-flash').startsWith('gemini') ? dom.transcribeModel.value : 'gemini-2.0-flash';
-    const base64 = await readFileAsBase64(file);
+    const modelValue = dom.transcribeModel.value || 'gemini-3.5-flash';
+    const model = modelValue.startsWith('gemini') ? modelValue : 'gemini-3.5-flash';
+    const mimeType = normalizeGeminiMime(file.type, file.name);
     const duration = Math.max(1, audioClip.duration || state.duration || 30);
-    const prompt = `Analizza questo audio e crea sottotitoli brevi in italiano. Rispondi solo con JSON valido, senza markdown. Schema esatto: {"segments":[{"start":0.0,"end":2.4,"text":"testo"}],"text":"trascrizione completa"}. Durata audio circa ${duration.toFixed(1)} secondi. Usa segmenti da 1 a 4 secondi, testi brevi e leggibili. Se non sei sicuro dei timestamp, distribuisci i segmenti in modo realistico lungo tutta la durata.`;
+    const prompt = `Trascrivi questo audio e crea sottotitoli brevi in italiano. Rispondi SOLO con JSON valido, senza markdown, senza testo prima o dopo. Schema esatto: {"segments":[{"start":0.0,"end":2.4,"text":"testo"}],"text":"trascrizione completa"}. Durata audio circa ${duration.toFixed(1)} secondi. Crea segmenti da 1 a 4 secondi, leggibili, sincronizzati e senza righe troppo lunghe. Se i timestamp non sono disponibili, distribuisci i segmenti in modo realistico lungo tutta la durata.`;
 
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`, {
+    let lastError = null;
+
+    // Per file piccoli usiamo inlineData: è più veloce e non richiede upload separato.
+    if (file.size <= 18 * 1024 * 1024) {
+      try {
+        updateLoading(20, 'Invio audio inline a Gemini...');
+        const base64 = await readFileAsBase64(file);
+        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`, {
+          method:'POST',
+          headers:{ 'Content-Type':'application/json' },
+          body: JSON.stringify({
+            contents: [{
+              role: 'user',
+              parts: [
+                { text: prompt },
+                { inlineData: { mimeType, data: base64 } }
+              ]
+            }],
+            generationConfig: {
+              temperature: 0.1,
+              responseMimeType: 'application/json'
+            }
+          })
+        });
+        if (!res.ok) throw new Error(await safeReadError(res));
+        const data = await res.json();
+        const raw = extractGeminiText(data);
+        if (!raw) throw new Error('Gemini ha risposto senza testo utilizzabile.');
+        return parseAiJson(raw, duration);
+      } catch (err) {
+        lastError = err;
+        console.warn('Gemini inline failed, trying Files API', err);
+      }
+    }
+
+    // Se inlineData fallisce o il file è più grande, proviamo con Files API.
+    try {
+      updateLoading(35, 'Caricamento audio su Gemini Files API...');
+      const uploaded = await uploadGeminiFile(apiKey, file, mimeType);
+      updateLoading(65, 'Generazione sottotitoli da file Gemini...');
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`, {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json' },
+        body: JSON.stringify({
+          contents: [{
+            role: 'user',
+            parts: [
+              { text: prompt },
+              { fileData: { mimeType: uploaded.mimeType || mimeType, fileUri: uploaded.uri } }
+            ]
+          }],
+          generationConfig: {
+            temperature: 0.1,
+            responseMimeType: 'application/json'
+          }
+        })
+      });
+      if (!res.ok) throw new Error(await safeReadError(res));
+      const data = await res.json();
+      const raw = extractGeminiText(data);
+      if (!raw) throw new Error('Gemini ha risposto senza testo utilizzabile dopo upload file.');
+      return parseAiJson(raw, duration);
+    } catch (err) {
+      const first = lastError ? `Primo tentativo inline: ${lastError.message || lastError}. ` : '';
+      throw new Error(first + `Tentativo Files API: ${err.message || err}`);
+    }
+  }
+
+  function extractGeminiText(data) {
+    return data?.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('\n').trim() || '';
+  }
+
+  async function safeReadError(res) {
+    try {
+      const txt = await res.text();
+      return `${res.status} ${res.statusText}: ${txt}`.slice(0, 1200);
+    } catch (_) {
+      return `${res.status} ${res.statusText}`;
+    }
+  }
+
+  function normalizeGeminiMime(type, name='') {
+    const t = String(type || '').toLowerCase();
+    if (t === 'audio/mpeg') return 'audio/mp3';
+    if (['audio/mp3','audio/wav','audio/aac','audio/ogg','audio/flac','audio/aiff'].includes(t)) return t;
+    const n = String(name || '').toLowerCase();
+    if (n.endsWith('.mp3')) return 'audio/mp3';
+    if (n.endsWith('.wav')) return 'audio/wav';
+    if (n.endsWith('.aac') || n.endsWith('.m4a')) return 'audio/aac';
+    if (n.endsWith('.ogg')) return 'audio/ogg';
+    if (n.endsWith('.flac')) return 'audio/flac';
+    if (n.endsWith('.aiff') || n.endsWith('.aif')) return 'audio/aiff';
+    return t || 'audio/mp3';
+  }
+
+  async function uploadGeminiFile(apiKey, file, mimeType) {
+    const startRes = await fetch('https://generativelanguage.googleapis.com/upload/v1beta/files', {
       method:'POST',
-      headers:{ 'Content-Type':'application/json' },
-      body: JSON.stringify({
-        contents: [{
-          role: 'user',
-          parts: [
-            { text: prompt },
-            { inline_data: { mime_type: file.type || 'audio/mpeg', data: base64 } }
-          ]
-        }],
-        generationConfig: {
-          temperature: 0.1,
-          responseMimeType: 'application/json'
-        }
-      })
+      headers:{
+        'x-goog-api-key': apiKey,
+        'X-Goog-Upload-Protocol': 'resumable',
+        'X-Goog-Upload-Command': 'start',
+        'X-Goog-Upload-Header-Content-Length': String(file.size),
+        'X-Goog-Upload-Header-Content-Type': mimeType,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ file: { displayName: file.name || 'audio' } })
     });
-    if (!res.ok) throw new Error(await res.text());
-    const data = await res.json();
-    const raw = data?.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('\n') || '';
-    return parseAiJson(raw, duration);
+    if (!startRes.ok) throw new Error(await safeReadError(startRes));
+    const uploadUrl = startRes.headers.get('x-goog-upload-url');
+    if (!uploadUrl) throw new Error('Gemini non ha restituito l’upload URL. Controlla eventuali restrizioni CORS o API key.');
+
+    const uploadRes = await fetch(uploadUrl, {
+      method:'POST',
+      headers:{
+        'Content-Length': String(file.size),
+        'X-Goog-Upload-Offset': '0',
+        'X-Goog-Upload-Command': 'upload, finalize'
+      },
+      body: file
+    });
+    if (!uploadRes.ok) throw new Error(await safeReadError(uploadRes));
+    const json = await uploadRes.json();
+    const info = json.file || json;
+    if (!info.uri) throw new Error('Upload completato ma URI file mancante nella risposta Gemini.');
+    return { uri: info.uri, mimeType: info.mimeType || mimeType };
   }
 
   function parseAiJson(raw, duration) {
