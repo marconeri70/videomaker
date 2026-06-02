@@ -97,7 +97,7 @@
         <section id="subtitlesTab" class="panel-tab">
           <div class="panel-heading">
             <h2>Sottotitoli AI da audio</h2>
-            <p>Genera sottotitoli sincronizzati partendo dalla traccia audio. La V6 usa inlineData corretto e, se serve, passa alla Files API di Gemini.</p>
+            <p>Genera sottotitoli sincronizzati partendo dalla traccia audio. La V7 usa retry automatico, cambio modello Gemini e Files API se il server è occupato.</p>
           </div>
           <label class="control">
             Motore AI
@@ -117,10 +117,10 @@
           <label class="control">
             Modello
             <select id="transcribeModel">
-              <option value="gemini-3.5-flash" selected>gemini-3.5-flash</option>
+              <option value="gemini-2.5-flash" selected>gemini-2.5-flash - consigliato</option>
+              <option value="gemini-2.0-flash">gemini-2.0-flash - alternativa stabile</option>
+              <option value="gemini-3.5-flash">gemini-3.5-flash</option>
               <option value="gemini-3-flash-preview">gemini-3-flash-preview</option>
-              <option value="gemini-2.5-flash">gemini-2.5-flash</option>
-              <option value="gemini-2.0-flash">gemini-2.0-flash</option>
               <option value="gpt-4o-mini-transcribe">gpt-4o-mini-transcribe</option>
               <option value="gpt-4o-transcribe">gpt-4o-transcribe</option>
               <option value="whisper-1">whisper-1</option>
@@ -134,7 +134,7 @@
             <input id="srtInput" type="file" accept=".srt,text/plain" />
           </label>
           <textarea id="subtitleDraftText" class="textarea" rows="6" placeholder="Incolla qui un testo se vuoi creare sottotitoli automatici distribuiti sulla durata dell'audio..."></textarea>
-          <div class="hint">La chiave non viene inserita nel codice della webapp. Se pubblichi online, non mettere mai una chiave fissa nei file.</div>
+          <div class="hint">Se Gemini risponde 503/UNAVAILABLE, non è un problema della chiave: il server è occupato. La V7 prova automaticamente più tentativi e modelli alternativi. La chiave non viene inserita nel codice della webapp.</div>
         </section>
 
         <section id="brandingTab" class="panel-tab">

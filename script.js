@@ -1,4 +1,4 @@
-/* VideoMaker Studio AI - static GitHub Pages editor - V6 Gemini subtitle fix */
+/* VideoMaker Studio AI - static GitHub Pages editor - V7 Gemini retry + fallback fix */
 (() => {
   'use strict';
 
@@ -1357,7 +1357,7 @@
       console.error(err);
       const detail = String(err?.message || err || '').slice(0, 900);
       const providerName = provider === 'gemini' ? 'Gemini' : 'OpenAI';
-      alert(`Non sono riuscito a generare i sottotitoli AI con ${providerName}.\n\nDettaglio tecnico: ${detail || 'errore non specificato'}\n\nProva: modello Gemini 3.5 Flash o 2.5 Flash, audio MP3/WAV/AAC/OGG/FLAC, chiave API valida e CTRL+F5 dopo l’aggiornamento.`);
+      alert(`Non sono riuscito a generare i sottotitoli AI con ${providerName}.\n\nDettaglio tecnico: ${detail || 'errore non specificato'}\n\nSe vedi errore 503 / UNAVAILABLE significa che Gemini è sovraccarico in quel momento: la V7 prova automaticamente retry e modelli alternativi. Puoi anche riprovare dopo qualche minuto, selezionare un altro modello oppure usare OpenAI/proxy sicuro.`);
     }
   }
 
@@ -1378,23 +1378,23 @@
   }
 
   async function transcribeWithGemini(apiKey, file, audioClip) {
-    const modelValue = dom.transcribeModel.value || 'gemini-3.5-flash';
-    const model = modelValue.startsWith('gemini') ? modelValue : 'gemini-3.5-flash';
+    const selected = dom.transcribeModel.value || 'gemini-2.5-flash';
+    const modelQueue = buildGeminiModelQueue(selected);
     const mimeType = normalizeGeminiMime(file.type, file.name);
     const duration = Math.max(1, audioClip.duration || state.duration || 30);
     const prompt = `Trascrivi questo audio e crea sottotitoli brevi in italiano. Rispondi SOLO con JSON valido, senza markdown, senza testo prima o dopo. Schema esatto: {"segments":[{"start":0.0,"end":2.4,"text":"testo"}],"text":"trascrizione completa"}. Durata audio circa ${duration.toFixed(1)} secondi. Crea segmenti da 1 a 4 secondi, leggibili, sincronizzati e senza righe troppo lunghe. Se i timestamp non sono disponibili, distribuisci i segmenti in modo realistico lungo tutta la durata.`;
 
-    let lastError = null;
+    const errors = [];
+    let base64 = null;
 
-    // Per file piccoli usiamo inlineData: è più veloce e non richiede upload separato.
+    // 1) InlineData: veloce per file piccoli. Ora usa retry + cambio modello automatico.
     if (file.size <= 18 * 1024 * 1024) {
-      try {
-        updateLoading(20, 'Invio audio inline a Gemini...');
-        const base64 = await readFileAsBase64(file);
-        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`, {
-          method:'POST',
-          headers:{ 'Content-Type':'application/json' },
-          body: JSON.stringify({
+      base64 = await readFileAsBase64(file);
+      for (let i = 0; i < modelQueue.length; i++) {
+        const model = modelQueue[i];
+        try {
+          updateLoading(18 + i * 8, `Gemini inline: ${model}...`);
+          const raw = await callGeminiGenerateWithRetry(apiKey, model, {
             contents: [{
               role: 'user',
               parts: [
@@ -1406,28 +1406,30 @@
               temperature: 0.1,
               responseMimeType: 'application/json'
             }
-          })
-        });
-        if (!res.ok) throw new Error(await safeReadError(res));
-        const data = await res.json();
-        const raw = extractGeminiText(data);
-        if (!raw) throw new Error('Gemini ha risposto senza testo utilizzabile.');
-        return parseAiJson(raw, duration);
-      } catch (err) {
-        lastError = err;
-        console.warn('Gemini inline failed, trying Files API', err);
+          }, `inline ${model}`);
+          return parseAiJson(raw, duration);
+        } catch (err) {
+          errors.push(`${model} inline: ${err.message || err}`);
+          console.warn('Gemini inline failed:', model, err);
+        }
       }
     }
 
-    // Se inlineData fallisce o il file è più grande, proviamo con Files API.
+    // 2) Files API: usata se inline fallisce o se l'audio è grande.
+    let uploaded = null;
     try {
-      updateLoading(35, 'Caricamento audio su Gemini Files API...');
-      const uploaded = await uploadGeminiFile(apiKey, file, mimeType);
-      updateLoading(65, 'Generazione sottotitoli da file Gemini...');
-      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`, {
-        method:'POST',
-        headers:{ 'Content-Type':'application/json' },
-        body: JSON.stringify({
+      updateLoading(55, 'Caricamento audio su Gemini Files API...');
+      uploaded = await uploadGeminiFile(apiKey, file, mimeType);
+    } catch (err) {
+      errors.push(`Files API upload: ${err.message || err}`);
+      throw new Error(makeGeminiFriendlyError(errors));
+    }
+
+    for (let i = 0; i < modelQueue.length; i++) {
+      const model = modelQueue[i];
+      try {
+        updateLoading(65 + i * 5, `Gemini file: ${model}...`);
+        const raw = await callGeminiGenerateWithRetry(apiKey, model, {
           contents: [{
             role: 'user',
             parts: [
@@ -1439,17 +1441,70 @@
             temperature: 0.1,
             responseMimeType: 'application/json'
           }
-        })
-      });
-      if (!res.ok) throw new Error(await safeReadError(res));
-      const data = await res.json();
-      const raw = extractGeminiText(data);
-      if (!raw) throw new Error('Gemini ha risposto senza testo utilizzabile dopo upload file.');
-      return parseAiJson(raw, duration);
-    } catch (err) {
-      const first = lastError ? `Primo tentativo inline: ${lastError.message || lastError}. ` : '';
-      throw new Error(first + `Tentativo Files API: ${err.message || err}`);
+        }, `file ${model}`);
+        return parseAiJson(raw, duration);
+      } catch (err) {
+        errors.push(`${model} file: ${err.message || err}`);
+        console.warn('Gemini file failed:', model, err);
+      }
     }
+
+    throw new Error(makeGeminiFriendlyError(errors));
+  }
+
+  function buildGeminiModelQueue(selected) {
+    const defaults = [
+      'gemini-2.5-flash',
+      'gemini-2.0-flash',
+      'gemini-3-flash-preview',
+      'gemini-3.5-flash'
+    ];
+    const first = String(selected || '').startsWith('gemini') ? selected : 'gemini-2.5-flash';
+    return [first, ...defaults].filter((m, i, arr) => m && arr.indexOf(m) === i);
+  }
+
+  async function callGeminiGenerateWithRetry(apiKey, model, body, label) {
+    const delays = [0, 1800, 4200];
+    let lastError = null;
+    for (let attempt = 0; attempt < delays.length; attempt++) {
+      if (delays[attempt]) {
+        updateLoading(null, `${label}: server occupato, nuovo tentativo ${attempt + 1}/${delays.length}...`);
+        await sleep(delays[attempt]);
+      }
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`, {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json' },
+        body: JSON.stringify(body)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const raw = extractGeminiText(data);
+        if (!raw) throw new Error('Gemini ha risposto senza testo utilizzabile.');
+        return raw;
+      }
+      const detail = await safeReadError(res);
+      lastError = new Error(detail);
+      if (!isRetryableGeminiError(res.status, detail)) break;
+    }
+    throw lastError || new Error('Errore Gemini non specificato.');
+  }
+
+  function isRetryableGeminiError(status, detail='') {
+    const text = String(detail).toLowerCase();
+    return status === 429 || status === 500 || status === 502 || status === 503 || status === 504 || text.includes('unavailable') || text.includes('high demand') || text.includes('try again later');
+  }
+
+  function makeGeminiFriendlyError(errors) {
+    const joined = errors.join('\n\n').slice(0, 1800);
+    const overloaded = /503|unavailable|high demand|try again later/i.test(joined);
+    if (overloaded) {
+      return `Gemini è momentaneamente sovraccarico oppure il modello scelto non è disponibile. Ho già provato retry e modelli alternativi.\n\nDettagli:\n${joined}`;
+    }
+    return joined || 'Errore Gemini non specificato.';
+  }
+
+  function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 
   function extractGeminiText(data) {
@@ -1792,7 +1847,7 @@
   }
   function safeFileName(name) { return String(name || 'videomaker-studio-ai').toLowerCase().replace(/[^a-z0-9\-_]+/gi,'-').replace(/-+/g,'-').replace(/^-|-$/g,'') || 'videomaker-studio-ai'; }
   function showLoading(title,text) { dom.loadingTitle.textContent = title; dom.loadingText.textContent = text || ''; dom.loadingOverlay.classList.remove('hidden'); }
-  function updateLoading(percent,text) { dom.loadingText.textContent = `${percent}% • ${text || ''}`; }
+  function updateLoading(percent,text) { dom.loadingText.textContent = percent == null ? (text || '') : `${percent}% • ${text || ''}`; }
   function hideLoading() { dom.loadingOverlay.classList.add('hidden'); }
 
   function initEvents() {

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'videomaker-studio-ai-v10-subtitles';
+const CACHE_NAME = 'videomaker-studio-ai-v11-gemini-retry';
 const ASSETS = [
   './',
   './index.html',

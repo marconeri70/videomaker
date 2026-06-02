@@ -1,4 +1,4 @@
-# VideoMaker Studio AI Pro V6
+# VideoMaker Studio AI Pro V7
 
 Webapp statica pronta per GitHub Pages per creare video da foto, video, audio, testi, effetti, transizioni e sottotitoli AI.
 
@@ -123,6 +123,14 @@ Questa versione corregge la visualizzazione dell'anteprima e aggiunge un livello
 - migliorata la risposta dell'interfaccia quando lo schermo viene dimezzato o usato da cellulare;
 - cache PWA aggiornata alla versione V9.
 
-## Correzione V6 sottotitoli AI
+## Correzione V7 sottotitoli AI
 
-La V6 corregge la generazione sottotitoli con Gemini usando il formato REST corretto `inlineData` / `mimeType`. Per file audio più grandi o quando l'invio inline fallisce, prova automaticamente la Gemini Files API. Gli errori ora mostrano anche il dettaglio tecnico, così è più facile capire se il problema dipende da chiave API, modello, formato audio, dimensione file o rete.
+La V7 corregge la generazione sottotitoli con Gemini usando il formato REST corretto `inlineData` / `mimeType`. Per file audio più grandi o quando l'invio inline fallisce, prova automaticamente la Gemini Files API. Gli errori ora mostrano anche il dettaglio tecnico, così è più facile capire se il problema dipende da chiave API, modello, formato audio, dimensione file o rete.
+
+
+## Novità V7
+
+- Retry automatico su errore Gemini 503 / UNAVAILABLE.
+- Cambio modello Gemini automatico se quello selezionato è sovraccarico.
+- Default su `gemini-2.5-flash`, con fallback su `gemini-2.0-flash`, `gemini-3-flash-preview` e `gemini-3.5-flash`.
+- Messaggi di errore più chiari quando Gemini è temporaneamente in alta domanda.
