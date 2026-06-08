@@ -1,4 +1,4 @@
-# VideoMaker Studio AI Pro V11
+# VideoMaker Studio AI Pro V12
 
 Webapp statica pronta per GitHub Pages per creare video da foto, video, audio, testi, effetti, transizioni e sottotitoli AI.
 
@@ -162,7 +162,7 @@ La V7 corregge la generazione sottotitoli con Gemini usando il formato REST corr
 - Messaggi di errore più chiari quando Gemini è temporaneamente in alta domanda.
 
 
-## Novità V11 - Loghi / Overlay
+## Novità V12 - Loghi / Overlay
 
 - Nuova scheda **Loghi**.
 - Caricamento loghi da file PNG, JPG, WEBP e SVG.
@@ -172,3 +172,9 @@ La V7 corregge la generazione sottotitoli con Gemini usando il formato REST corr
 - Logo cliccabile e trascinabile direttamente nell’anteprima.
 - Modifica di posizione, dimensione, opacità, rotazione, filtro e animazione dall’Inspector.
 - I loghi vengono esportati correttamente in WEBM/MP4.
+
+
+## Novità V12
+- Linea di scorrimento/playhead trascinabile liberamente nella timeline.
+- Anteprima immediata quando scegli effetti, transizioni, movimenti e stili di testi/sottotitoli.
+- Stili Intro/Finale aggiornati in tempo reale quando cambi font, colori, palette e animazione.

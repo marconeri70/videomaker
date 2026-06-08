@@ -1,4 +1,4 @@
-const CACHE_NAME = 'videomaker-studio-ai-v15-logo-overlay-editor';
+const CACHE_NAME = 'videomaker-studio-ai-v12-playhead-live-preview';
 const ASSETS = [
   './',
   './index.html',

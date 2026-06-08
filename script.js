@@ -1,4 +1,4 @@
-/* VideoMaker Studio AI - static GitHub Pages editor - V10 timeline resizable, compact editable layout, stable drag */
+/* VideoMaker Studio AI - static GitHub Pages editor - V12 playhead draggable + live previews */
 (() => {
   'use strict';
 
@@ -198,7 +198,7 @@
 
   function serializeProject() {
     return {
-      version: 11,
+      version: 12,
       projectName: state.projectName,
       format: state.format,
       fps: state.fps,
@@ -360,11 +360,18 @@
   }
   function addTextClip() {
     pushHistory();
-    state.clips.text.push({ id:uid('clip'), track:'text', kind:'text', label:'Titolo', text:'Scrivi il tuo testo', start:state.currentTime, duration:3, x:.5, y:.18, size:64, color:'#ffffff', background:'rgba(0,0,0,0)', font:'Inter', weight:800, animation:'rise', align:'center', shadow:true, effect:'none' });
+    const clip = { id:uid('clip'), track:'text', kind:'text', label:'Titolo', text:'Scrivi il tuo testo', start:state.currentTime, duration:3, x:.5, y:.18, size:64, color:'#ffffff', background:'rgba(0,0,0,0)', font:'Inter', weight:800, animation:'rise', align:'center', shadow:true, effect:'none' };
+    state.clips.text.push(clip);
+    state.selected = { id: clip.id, track:'text' };
+    previewClipChange({ clip, track:'text' }, 'new');
     renderAll();
   }
   function addSubtitleClip(text = 'Nuovo sottotitolo', start = state.currentTime, duration = 2) {
-    state.clips.subtitles.push({ id:uid('clip'), track:'subtitles', kind:'subtitle', label:'Sottotitolo', text, start, duration, x:.5, y:.82, size:42, color:'#ffffff', background:'rgba(0,0,0,.62)', font:'Inter', weight:800, animation:'pop', align:'center', shadow:true, effect:'none' });
+    const clip = { id:uid('clip'), track:'subtitles', kind:'subtitle', label:'Sottotitolo', text, start, duration, x:.5, y:.82, size:42, color:'#ffffff', background:'rgba(0,0,0,.62)', font:'Inter', weight:800, animation:'pop', align:'center', shadow:true, effect:'none' };
+    state.clips.subtitles.push(clip);
+    state.selected = { id: clip.id, track:'subtitles' };
+    previewClipChange({ clip, track:'subtitles' }, 'new');
+    return clip;
   }
 
   function addLogoClip(asset, opts = {}) {
@@ -537,6 +544,13 @@
     }
   }
 
+  function renderPresetSelection() {
+    const found = selectedClip();
+    $$('[data-effect]').forEach(b => b.classList.toggle('active', !!found && (found.clip.effect || 'none') === b.dataset.effect && found.track !== 'audio'));
+    $$('[data-motion]').forEach(b => b.classList.toggle('active', !!found && found.track === 'media' && (found.clip.motion || 'none') === b.dataset.motion));
+    $$('[data-transition]').forEach(b => b.classList.toggle('active', !!found && found.track === 'media' && (found.clip.transition || 'none') === b.dataset.transition));
+  }
+
   function applyToSelected(key, value, trackExpected) {
     const found = selectedClip();
     if (!found) return alert('Seleziona prima una clip nella timeline.');
@@ -545,7 +559,22 @@
     pushHistory();
     found.clip[key] = value;
     if (key === 'transition' && !found.clip.transitionDuration) found.clip.transitionDuration = .45;
+    previewClipChange(found, key);
     renderAll();
+  }
+
+  function previewClipChange(found, field = '') {
+    if (!found?.clip) return;
+    const clip = found.clip;
+    const start = Math.max(0, Number(clip.start || 0));
+    const duration = Math.max(.2, Number(clip.duration || 0));
+    const end = start + duration;
+    let target = state.currentTime;
+    const outside = target < start || target > end;
+    if (field === 'transition') target = start + Math.min(duration * .45, Math.max(.08, Number(clip.transitionDuration || .45) * .55));
+    else if (field === 'motion') target = start + Math.min(duration * .55, Math.max(.25, duration / 2));
+    else if (outside || field === 'new' || ['effect','font','animation','color','background','size','weight','align','select'].includes(field)) target = start + Math.min(Math.max(.18, duration * .35), Math.max(.18, duration - .05));
+    state.currentTime = clamp(Math.round(target * 100) / 100, 0, Math.max(state.duration || end || 0, end));
   }
 
   function renderTimeline() {
@@ -676,6 +705,8 @@
 
   function selectClip(id, track, doRender = true) {
     state.selected = { id, track };
+    const found = findClip(id);
+    if (found && (state.currentTime < found.clip.start || state.currentTime > found.clip.start + found.clip.duration)) previewClipChange(found, 'select');
     if (doRender) renderAll(); else { renderInspector(); renderPreviewOverlay(); }
   }
 
@@ -686,6 +717,72 @@
     dom.playhead.style.left = `${left}px`;
     dom.timeSlider.value = state.currentTime;
     dom.timeReadout.textContent = `${fmtTime(state.currentTime)} / ${fmtTime(state.duration)}`;
+  }
+
+
+  function timelineLabelWidth() {
+    const label = $('.track-label', dom.timelineScroll);
+    return label?.getBoundingClientRect().width || (window.innerWidth <= 560 ? 82 : window.innerWidth <= 980 ? 96 : 126);
+  }
+
+  function timeFromTimelineClientX(clientX, useSnap = false) {
+    if (!dom.timelineScroll) return 0;
+    const rect = dom.timelineScroll.getBoundingClientRect();
+    const labelWidth = timelineLabelWidth();
+    const x = clientX - rect.left + dom.timelineScroll.scrollLeft - labelWidth;
+    const raw = Math.max(0, x / Math.max(1, state.pps));
+    return useSnap ? snapTime(raw) : Math.round(raw * 100) / 100;
+  }
+
+  function seekTimelineTo(clientX, useSnap = false) {
+    stopPlayback();
+    const maxTime = Math.max(state.duration || 0, 0.01);
+    state.currentTime = clamp(timeFromTimelineClientX(clientX, useSnap), 0, Math.max(maxTime, timeFromTimelineClientX(clientX, false)));
+    renderPreview(state.currentTime);
+  }
+
+  function beginPlayheadDrag(e) {
+    if (e.button !== undefined && e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    stopPlayback();
+    dom.playhead?.classList.add('dragging');
+    document.body.classList.add('dragging-playhead');
+    try { dom.playhead.setPointerCapture(e.pointerId); } catch (_) {}
+    seekTimelineTo(e.clientX, false);
+    const onMove = ev => {
+      ev.preventDefault?.();
+      seekTimelineTo(ev.clientX, false);
+      autoScrollTimelineWhileDragging(ev.clientX);
+    };
+    const onUp = () => {
+      dom.playhead?.classList.remove('dragging');
+      document.body.classList.remove('dragging-playhead');
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+  }
+
+  function beginTimelineSeekDrag(e) {
+    if (e.button !== undefined && e.button !== 0) return;
+    if (e.target.closest?.('.clip,.resize-handle,.track-label,.tab,.btn,button,input,textarea,select')) return;
+    const canStart = e.target === dom.ruler || e.target.classList?.contains('ruler') || e.target.classList?.contains('track-lane') || e.target.classList?.contains('tick') || e.target.classList?.contains('ruler-row');
+    if (!canStart) return;
+    e.preventDefault();
+    e.stopPropagation();
+    beginPlayheadDrag(e);
+  }
+
+  function autoScrollTimelineWhileDragging(clientX) {
+    if (!dom.timelineScroll) return;
+    const rect = dom.timelineScroll.getBoundingClientRect();
+    const edge = 54;
+    if (clientX > rect.right - edge) dom.timelineScroll.scrollLeft += 18;
+    if (clientX < rect.left + edge) dom.timelineScroll.scrollLeft -= 18;
   }
 
   function canvasPoint(e) {
@@ -790,7 +887,8 @@
     });
     $('#deleteClipBtn')?.addEventListener('click', deleteSelected);
     $('#duplicateClipBtn')?.addEventListener('click', duplicateSelected);
-    $('#logoFullDurationBtn')?.addEventListener('click', () => { const f = selectedClip(); if (!f) return; pushHistory(); f.clip.start = 0; f.clip.duration = Math.max(state.duration || 0, endOfTrack('media'), endOfTrack('audio'), 5); renderAll(); });
+    $('#logoFullDurationBtn')?.addEventListener('click', () => { const f = selectedClip(); if (!f) return; pushHistory(); f.clip.start = 0; f.clip.duration = Math.max(state.duration || 0, endOfTrack('media'), endOfTrack('audio'), 5); previewClipChange(f, 'duration'); renderAll(); });
+    renderPresetSelection();
   }
 
   function updateClipField(input) {
@@ -806,8 +904,10 @@
     if (field === 'start') value = Math.max(0, value);
     clip[field] = value;
     computeDuration();
+    previewClipChange(found, field);
     renderTimeline();
     renderPreview(state.currentTime);
+    renderPresetSelection();
   }
 
   function numberControl(field,label,value,min,max,step){return `<label class="control">${label}<input data-field="${field}" type="number" min="${min}" max="${max}" step="${step}" value="${Number(value ?? 0).toFixed(step < 1 ? 2 : 0)}"></label>`;}
@@ -1922,7 +2022,7 @@
     state.branding = { ...DEFAULT_BRANDING, ...(state.branding || {}), style: styleId, ...preset };
     syncBrandingInputs();
     readBrandingInputs();
-    saveAutosave();
+    livePreviewBranding();
   }
 
   function applyBrandPalette(title, subtitle, bg) {
@@ -1931,7 +2031,7 @@
     if (dom.brandingBackgroundText) dom.brandingBackgroundText.value = bg;
     if (dom.brandingBackgroundColor) dom.brandingBackgroundColor.value = toColor(bg);
     readBrandingInputs();
-    saveAutosave();
+    livePreviewBranding();
   }
 
   function removeBrandingClips(includeLegacy = false) {
@@ -1963,23 +2063,39 @@
     };
   }
 
-  function applyBrandingClips() {
-    pushHistory();
+  function rebuildBrandingClips({ withHistory = false, livePreview = true } = {}) {
+    if (withHistory) pushHistory();
     readBrandingInputs();
+    const hadBranding = state.clips.text.some(c => isBrandingClip(c, true)) || state.clips.subtitles.some(c => isBrandingClip(c, true));
     removeBrandingClips(true);
     const b = state.branding;
+    const contentEnd = contentEndWithoutBranding();
+    let previewTarget = state.currentTime;
     if (b.introEnabled) {
       const d = clamp(Number(b.introDuration || 3), .5, 20);
       if ((b.introTitle || '').trim()) state.clips.text.push(brandingTextClip('intro-title', b.introTitle.trim(), 0, d, .42, 74));
       if ((b.introSubtitle || '').trim()) state.clips.subtitles.push(brandingSubtitleClip('intro-subtitle', b.introSubtitle.trim(), .25, Math.max(.25, d - .35), .62));
+      previewTarget = Math.min(.45, Math.max(.05, d / 2));
     }
     if (b.outroEnabled) {
       const d = clamp(Number(b.outroDuration || 3), .5, 20);
-      const start = contentEndWithoutBranding();
+      const start = contentEnd;
       if ((b.outroTitle || '').trim()) state.clips.text.push(brandingTextClip('outro-title', b.outroTitle.trim(), start, d, .42, 70));
       if ((b.outroSubtitle || '').trim()) state.clips.subtitles.push(brandingSubtitleClip('outro-subtitle', b.outroSubtitle.trim(), start + .25, Math.max(.25, d - .35), .62));
+      if (!b.introEnabled) previewTarget = start + Math.min(.45, Math.max(.05, d / 2));
     }
+    computeDuration();
+    if (livePreview && (b.introEnabled || b.outroEnabled || hadBranding)) state.currentTime = clamp(previewTarget, 0, Math.max(state.duration, previewTarget));
     renderAll();
+  }
+
+  function applyBrandingClips() {
+    rebuildBrandingClips({ withHistory:true, livePreview:true });
+  }
+
+  function livePreviewBranding() {
+    rebuildBrandingClips({ withHistory:false, livePreview:true });
+    saveAutosave();
   }
 
   function removeBrandingAction() {
@@ -2023,10 +2139,10 @@
     pushHistory();
   }
   function saveAutosave() {
-    try { localStorage.setItem('videomaker_autosave_v11', JSON.stringify(serializeProject())); } catch(_) {}
+    try { localStorage.setItem('videomaker_autosave_v12', JSON.stringify(serializeProject())); } catch(_) {}
   }
   function loadAutosave() {
-    const raw = localStorage.getItem('videomaker_autosave_v11') || localStorage.getItem('videomaker_autosave_v10') || localStorage.getItem('videomaker_autosave_v9') || localStorage.getItem('videomaker_autosave_v6');
+    const raw = localStorage.getItem('videomaker_autosave_v12') || localStorage.getItem('videomaker_autosave_v11') || localStorage.getItem('videomaker_autosave_v10') || localStorage.getItem('videomaker_autosave_v9') || localStorage.getItem('videomaker_autosave_v6');
     if (!raw) return;
     try { const data = JSON.parse(raw); if (data?.clips) restoreProject(data); } catch(_) {}
   }
@@ -2065,6 +2181,7 @@
       localStorage.removeItem('videomaker_autosave_v9');
       localStorage.removeItem('videomaker_autosave_v10');
       localStorage.removeItem('videomaker_autosave_v11');
+      localStorage.removeItem('videomaker_autosave_v12');
     } catch (_) {}
     syncBrandingInputs();
     applyFormat();
@@ -2213,9 +2330,10 @@
         if (el === dom.brandingSubtitleColorText) dom.brandingSubtitleColor.value = toColor(el.value);
         if (el === dom.brandingBackgroundColor) dom.brandingBackgroundText.value = hexToRgba(el.value, .55);
         if (el === dom.brandingBackgroundText) dom.brandingBackgroundColor.value = toColor(el.value);
-        readBrandingInputs(); saveAutosave();
+        readBrandingInputs();
+        livePreviewBranding();
       });
-      el.addEventListener('change', () => { readBrandingInputs(); saveAutosave(); });
+      el.addEventListener('change', () => { readBrandingInputs(); livePreviewBranding(); });
     });
     $$('.brand-style').forEach(btn => btn.addEventListener('click', () => applyBrandStyle(btn.dataset.brandStyle || 'modern')));
     $$('.brand-color-chip').forEach(btn => btn.addEventListener('click', () => applyBrandPalette(btn.dataset.title, btn.dataset.subtitle, btn.dataset.bg)));
@@ -2227,12 +2345,12 @@
     dom.playBtn.addEventListener('click', () => state.playing ? stopPlayback() : startPlayback());
     dom.timeSlider.addEventListener('input', e => { stopPlayback(); state.currentTime = Number(e.target.value); renderPreview(state.currentTime); });
     dom.canvas.addEventListener('pointerdown', onCanvasPointerDown);
+    dom.playhead?.addEventListener('pointerdown', beginPlayheadDrag);
+    dom.timelineScroll.addEventListener('pointerdown', beginTimelineSeekDrag);
     dom.timelineScroll.addEventListener('click', e => {
-      if (!e.target.classList.contains('track-lane') && e.target !== dom.ruler) return;
-      const rect = e.target.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      state.currentTime = clamp(x / state.pps, 0, state.duration || 999);
-      renderPreview(state.currentTime);
+      if (e.target.closest?.('.clip,.resize-handle,.track-label')) return;
+      if (!e.target.classList.contains('track-lane') && e.target !== dom.ruler && !e.target.classList.contains('tick')) return;
+      seekTimelineTo(e.clientX, false);
     });
     dom.zoomSlider.addEventListener('input', e => { state.pps = Number(e.target.value); renderTimeline(); });
     $('#zoomOutBtn').addEventListener('click', () => { state.pps = clamp(state.pps - 10,45,180); dom.zoomSlider.value = state.pps; renderTimeline(); });
